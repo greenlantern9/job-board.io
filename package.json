@@ -1,0 +1,20 @@
+{
+  "name": "job-board-io",
+  "version": "0.1.0",
+  "private": true,
+  "description": "job-board.io - prioritized job tracking with AI scoring, on Cloudflare Workers + D1",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/",
+    "db:init": "wrangler d1 execute job-board --remote --file=./schema.sql",
+    "db:init:local": "wrangler d1 execute job-board --local --file=./schema.sql"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

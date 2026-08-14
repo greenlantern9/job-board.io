@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#0d0e0a"/>
+  <!-- Three bars of increasing height: the score bar, which is the product's
+       one repeated visual idea. -->
+  <rect x="7"  y="18" width="4.5" height="7"  rx="1.5" fill="#4d5a2a"/>
+  <rect x="13.75" y="13" width="4.5" height="12" rx="1.5" fill="#89ab35"/>
+  <rect x="20.5" y="7"  width="4.5" height="18" rx="1.5" fill="#c3f53c"/>
+</svg>

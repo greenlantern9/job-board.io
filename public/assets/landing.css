@@ -1,0 +1,553 @@
+/* Landing page. Layout leans on one wide column with generous vertical
+   rhythm; the accent is rationed so the score bars and the primary CTA are
+   the only truly loud things on the page. */
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  padding: 0.7rem 1.1rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  border-radius: 0 0 var(--r-md) 0;
+  z-index: 100;
+}
+.skip:focus {
+  left: 0;
+}
+
+/* --- nav ---------------------------------------------------------------- */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 1rem clamp(1rem, 5vw, 3.5rem);
+  background: rgba(13, 14, 10, 0.82);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.wordmark__dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  background: var(--accent);
+  /* A square rotated 45deg reads as a marker without needing a logo file. */
+  transform: rotate(45deg);
+  flex: none;
+}
+
+.wordmark__tld {
+  color: var(--faint);
+}
+
+.nav__links {
+  display: flex;
+  gap: 1.75rem;
+  margin-left: auto;
+  font-size: 0.9375rem;
+}
+
+.nav__links a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s var(--ease);
+}
+
+.nav__links a:hover {
+  color: var(--text);
+}
+
+.nav__actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+@media (max-width: 860px) {
+  .nav__links {
+    display: none;
+  }
+  .nav__actions {
+    margin-left: auto;
+  }
+}
+
+/* --- hero --------------------------------------------------------------- */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: center;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(3.5rem, 9vw, 7rem) clamp(1rem, 5vw, 3.5rem) clamp(3rem, 7vw, 5rem);
+  position: relative;
+}
+
+/* A single soft accent bloom behind the hero, so the page has depth without
+   a gradient that fights the type. */
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -10%;
+  right: 6%;
+  width: 46rem;
+  height: 30rem;
+  background: radial-gradient(ellipse at center, rgba(195, 245, 60, 0.09), transparent 66%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.hero__title {
+  font-size: clamp(2.4rem, 5.6vw, 4.1rem);
+  margin: 1rem 0 1.35rem;
+  letter-spacing: -0.035em;
+}
+
+.hero__title em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.hero__lede {
+  font-size: clamp(1.02rem, 1.35vw, 1.175rem);
+  color: var(--muted);
+  max-width: 34rem;
+}
+
+.hero__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.hero__note {
+  margin-top: 1.4rem;
+  font-size: 0.75rem;
+  color: var(--faint);
+  letter-spacing: 0.02em;
+}
+
+/* --- product preview ---------------------------------------------------- */
+
+.preview {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.preview__chrome {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-2);
+}
+
+.preview__tab {
+  padding: 0.28rem 0.7rem;
+  border-radius: var(--r-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--faint);
+}
+
+.preview__tab--on {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.preview__spacer {
+  flex: 1;
+}
+
+.preview__pulse {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(195, 245, 60, 0.6);
+  animation: pulse 2.4s ease-out infinite;
+}
+
+@keyframes pulse {
+  70% {
+    box-shadow: 0 0 0 7px rgba(195, 245, 60, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(195, 245, 60, 0);
+  }
+}
+
+.preview__stamp {
+  font-size: 0.6875rem;
+  color: var(--faint);
+}
+
+.preview__row {
+  display: grid;
+  grid-template-columns: 3.1rem 1fr auto;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 0.95rem 1rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.preview__row:last-child {
+  border-bottom: 0;
+}
+
+.preview__row--dim {
+  opacity: 0.5;
+}
+
+.preview__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.preview__body strong {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.preview__meta {
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+.preview__why {
+  font-size: 0.75rem;
+  color: var(--faint);
+}
+
+/* Score chip: the number carries the value, the bar carries the shape, and
+   the hue only ever encodes the band. Shared with the app. */
+.score {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  --score-color: var(--muted);
+}
+
+.score--high {
+  --score-color: var(--accent);
+}
+.score--mid {
+  --score-color: var(--warn);
+}
+.score--low {
+  --score-color: var(--faint);
+}
+
+.score__num {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--score-color);
+  line-height: 1;
+}
+
+.score__bar {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.score__bar i {
+  display: block;
+  height: 100%;
+  background: var(--score-color);
+  border-radius: 2px;
+}
+
+.pill {
+  padding: 0.22rem 0.6rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.pill--new {
+  border-color: rgba(195, 245, 60, 0.35);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.pill--applied {
+  border-color: rgba(127, 200, 245, 0.35);
+  background: rgba(127, 200, 245, 0.1);
+  color: var(--info);
+}
+
+@media (max-width: 940px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .preview {
+    order: 2;
+  }
+}
+
+/* --- sections ----------------------------------------------------------- */
+
+.section {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(3.5rem, 8vw, 6rem) clamp(1rem, 5vw, 3.5rem);
+}
+
+.section--flush {
+  padding-top: 0;
+}
+
+.section__head {
+  margin-bottom: 3rem;
+  max-width: 44rem;
+}
+
+.section__title {
+  margin-top: 0.85rem;
+  font-size: clamp(1.75rem, 3.4vw, 2.6rem);
+}
+
+/* --- steps -------------------------------------------------------------- */
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.step {
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.step__num {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+}
+
+.step h3 {
+  margin: 0.85rem 0 0.6rem;
+  font-size: 1.2rem;
+}
+
+.step p {
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.step em {
+  font-style: normal;
+  color: var(--text);
+}
+
+/* --- feature grid ------------------------------------------------------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 1.1rem;
+}
+
+.card {
+  padding: 1.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.card:hover {
+  border-color: #3a3f2b;
+  background: var(--surface-2);
+}
+
+.card--wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 780px) {
+  .card--wide {
+    grid-column: span 1;
+  }
+}
+
+.card h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.6rem;
+}
+
+.card p {
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.card em {
+  font-style: normal;
+  color: var(--text);
+}
+
+.card__demo {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: 1.3rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--r-md);
+  background: var(--ink);
+  border: 1px solid var(--line-soft);
+}
+
+.card__demo .score {
+  width: 3.1rem;
+  flex: none;
+}
+
+.card__demo-why {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+/* --- security ----------------------------------------------------------- */
+
+.security {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(2rem, 5vw, 4rem);
+  padding: clamp(2rem, 4vw, 3.25rem);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: linear-gradient(160deg, var(--surface-2), var(--surface));
+}
+
+.security__lede {
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.security__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 1.35rem;
+}
+
+.security__list li {
+  display: grid;
+  gap: 0.3rem;
+  padding-left: 1.4rem;
+  position: relative;
+}
+
+.security__list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 1px;
+  background: var(--accent);
+  transform: rotate(45deg);
+}
+
+.security__list strong {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.security__list span {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+@media (max-width: 860px) {
+  .security {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- cta + footer ------------------------------------------------------- */
+
+.cta {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(3.5rem, 8vw, 6rem) clamp(1rem, 5vw, 3.5rem);
+  text-align: center;
+}
+
+.cta__title {
+  font-size: clamp(2rem, 4.5vw, 3.2rem);
+}
+
+.cta__lede {
+  margin: 1rem auto 2rem;
+  max-width: 32rem;
+  color: var(--muted);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 2rem clamp(1rem, 5vw, 3.5rem) 3rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.wordmark--sm {
+  font-size: 0.8125rem;
+}
+
+.footer__note {
+  font-size: 0.6875rem;
+  color: var(--faint);
+}

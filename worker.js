@@ -1,0 +1,261 @@
+// job-board.io - Cloudflare Worker entry point.
+//
+// The Worker sits in front of everything (assets.run_worker_first), so the
+// apex redirect, security headers, and the session check on /app all apply to
+// page loads as well as to /api/*.
+
+import {
+  json,
+  unauthorized,
+  notFound,
+  forbidden,
+  badRequest,
+  getCookie,
+  withSecurityHeaders,
+  verifyOrigin,
+  requiresJsonBody,
+  escapeHtml,
+  SESSION_COOKIE,
+} from './src/http.js';
+import { ensureSchema, run, nowIso } from './src/db.js';
+import { loadSession, findUserById, purgeExpired } from './src/auth.js';
+import { AUTH_ROUTES, verifyEmailToken } from './src/routes/auth.js';
+import { APP_ROUTES } from './src/routes/app.js';
+import { boardsDueForRefresh, refreshBoard } from './src/ingest.js';
+import { runNotifications, applyUnsubscribe } from './src/notify.js';
+
+const ROUTES = { ...AUTH_ROUTES, ...APP_ROUTES };
+
+// One cron tick must finish inside the Worker's CPU budget, so refreshes are
+// round-robined: boardsDueForRefresh orders by last_refresh ascending, and the
+// boards that miss a tick lead the queue on the next one.
+const BOARDS_PER_TICK = 5;
+
+const SESSION_TOUCH_MS = 60 * 60 * 1000;
+
+async function buildContext(env, request) {
+  const token = getCookie(request, SESSION_COOKIE);
+  if (!token) return { token: null, session: null, user: null };
+  const session = await loadSession(env, token);
+  if (!session) return { token, session: null, user: null };
+  const user = await findUserById(env, session.user_id);
+  if (!user) return { token, session: null, user: null };
+  return { token, session, user };
+}
+
+function htmlPage({ title, heading, body, linkHref, linkLabel }, status = 200) {
+  // Standalone pages (unsubscribe, error states) that do not need the app
+  // shell. Inline styles keep them independent of the asset bundle.
+  return new Response(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root{color-scheme:dark}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0e0a;color:#e8ebdd;
+       font:400 16px/1.6 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:24px}
+  .card{max-width:26rem;text-align:center}
+  .mark{font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.2em;
+        text-transform:uppercase;color:#c3f53c}
+  h1{margin:.75rem 0 .5rem;font-size:1.6rem;letter-spacing:-.02em}
+  p{margin:0 0 1.5rem;color:#9aa08a}
+  a{display:inline-block;padding:.7rem 1.4rem;border-radius:999px;background:#c3f53c;color:#0d0e0a;
+    font-weight:600;text-decoration:none}
+</style></head>
+<body><div class="card"><div class="mark">job-board.io</div>
+<h1>${escapeHtml(heading)}</h1><p>${escapeHtml(body)}</p>
+${linkHref ? `<a href="${escapeHtml(linkHref)}">${escapeHtml(linkLabel)}</a>` : ''}
+</div></body></html>`,
+    { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } }
+  );
+}
+
+async function serveAsset(env, request, pathname) {
+  const url = new URL(request.url);
+  url.pathname = pathname;
+  const response = await env.ASSETS.fetch(new Request(url.toString(), request));
+  if (pathname.endsWith('.html')) {
+    // The app shell is per-user once JavaScript runs; never let a shared cache
+    // hold it.
+    const headers = new Headers(response.headers);
+    headers.set('Cache-Control', 'no-store');
+    return new Response(response.body, { status: response.status, headers });
+  }
+  return response;
+}
+
+async function handleApi(request, env, executionCtx, url) {
+  // CSRF: a cross-site form post cannot set Origin to us, and cannot send
+  // application/json without a preflight we never answer.
+  if (!verifyOrigin(request)) return forbidden('Request origin is not allowed.');
+  if (!requiresJsonBody(request)) return badRequest('Send JSON.');
+
+  const route = ROUTES[`${request.method} ${url.pathname}`];
+  if (!route) return notFound('No such endpoint.');
+
+  const ctx = await buildContext(env, request);
+
+  if (route.auth !== false) {
+    if (!ctx.user || !ctx.session) return unauthorized();
+    if (!ctx.session.mfa_satisfied && !route.partial) {
+      return json({ error: 'Two-factor code required.', mfaRequired: true }, { status: 401 });
+    }
+  }
+
+  // Keep last_seen_at roughly current for the session list without writing on
+  // every single request.
+  if (ctx.session && Date.now() - new Date(ctx.session.last_seen_at).getTime() > SESSION_TOUCH_MS) {
+    executionCtx.waitUntil(
+      run(env, 'UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?', nowIso(), ctx.session.token_hash)
+    );
+  }
+
+  return route.handler(request, env, ctx);
+}
+
+async function handleRequest(request, env, executionCtx) {
+  const url = new URL(request.url);
+
+  // Canonical host. Keeping one origin means cookies, CSP, and Origin checks
+  // all agree with each other.
+  if (url.hostname.startsWith('www.')) {
+    url.hostname = url.hostname.slice(4);
+    return Response.redirect(url.toString(), 301);
+  }
+  if (url.protocol === 'http:' && url.hostname !== 'localhost' && !url.hostname.startsWith('127.')) {
+    url.protocol = 'https:';
+    return Response.redirect(url.toString(), 301);
+  }
+
+  await ensureSchema(env);
+
+  if (url.pathname.startsWith('/api/')) {
+    return handleApi(request, env, executionCtx, url);
+  }
+
+  // Email-confirmation link. Handled server-side so the token never reaches
+  // client JavaScript or a Referer header.
+  if (url.pathname === '/verify') {
+    const ok = await verifyEmailToken(env, url.searchParams.get('token') || '');
+    return htmlPage(
+      ok
+        ? {
+            title: 'Email confirmed',
+            heading: 'Address confirmed',
+            body: 'Alerts can now reach you. Head back to your board.',
+            linkHref: '/app',
+            linkLabel: 'Open job-board.io',
+          }
+        : {
+            title: 'Link expired',
+            heading: 'That link has expired',
+            body: 'Confirmation links last 24 hours. Sign in and send yourself a fresh one.',
+            linkHref: '/app',
+            linkLabel: 'Sign in',
+          },
+      ok ? 200 : 400
+    );
+  }
+
+  if (url.pathname === '/unsubscribe') {
+    const ok = await applyUnsubscribe(env, url.searchParams.get('token') || '');
+    return htmlPage({
+      title: ok ? 'Alert turned off' : 'Link not recognised',
+      heading: ok ? 'Alert turned off' : 'We could not read that link',
+      body: ok
+        ? 'You will not get email from this alert again. Your other alerts are untouched.'
+        : 'The link may have already been used, or it was cut short by your mail client.',
+      linkHref: '/app',
+      linkLabel: 'Manage alerts',
+    });
+  }
+
+  if (url.pathname === '/' || url.pathname === '/index.html') {
+    return serveAsset(env, request, '/index.html');
+  }
+
+  // Every app route is the same shell; the client router reads the path.
+  if (
+    url.pathname === '/app' ||
+    url.pathname.startsWith('/app/') ||
+    url.pathname === '/reset' ||
+    url.pathname === '/signin' ||
+    url.pathname === '/signup'
+  ) {
+    return serveAsset(env, request, '/app.html');
+  }
+
+  const asset = await serveAsset(env, request, url.pathname);
+  if (asset.status === 404) {
+    return htmlPage(
+      {
+        title: 'Not found',
+        heading: 'Nothing here',
+        body: 'That page does not exist.',
+        linkHref: '/',
+        linkLabel: 'Back to job-board.io',
+      },
+      404
+    );
+  }
+  return asset;
+}
+
+async function runCron(env) {
+  await ensureSchema(env);
+  await purgeExpired(env);
+
+  const due = await boardsDueForRefresh(env, { limit: BOARDS_PER_TICK });
+  for (const board of due) {
+    try {
+      await refreshBoard(env, board, { selfHost: new URL(env.SITE_URL || 'https://job-board.io').hostname });
+    } catch (err) {
+      // One board's failure must not stop the rest of the tick, or a single bad
+      // board would starve every other user's schedule.
+      await run(
+        env,
+        'UPDATE boards SET last_error = ?, last_refresh = ?, updated_at = ? WHERE id = ?',
+        String(err.message || err).slice(0, 300),
+        nowIso(),
+        nowIso(),
+        board.id
+      );
+    }
+  }
+
+  await runNotifications(env);
+}
+
+export default {
+  async fetch(request, env, executionCtx) {
+    try {
+      return withSecurityHeaders(await handleRequest(request, env, executionCtx));
+    } catch (err) {
+      // Never leak a stack trace to the client; observability captures it.
+      console.error('unhandled', err && err.stack ? err.stack : err);
+      const accepts = request.headers.get('Accept') || '';
+      if (accepts.includes('application/json') || new URL(request.url).pathname.startsWith('/api/')) {
+        return withSecurityHeaders(json({ error: 'Something went wrong on our end.' }, { status: 500 }));
+      }
+      return withSecurityHeaders(
+        htmlPage(
+          {
+            title: 'Error',
+            heading: 'Something went wrong',
+            body: 'That is on us. Try again in a moment.',
+            linkHref: '/',
+            linkLabel: 'Back to job-board.io',
+          },
+          500
+        )
+      );
+    }
+  },
+
+  async scheduled(event, env, executionCtx) {
+    executionCtx.waitUntil(
+      runCron(env).catch((err) => console.error('cron failed', err && err.stack ? err.stack : err))
+    );
+  },
+};

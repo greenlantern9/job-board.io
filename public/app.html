@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>job-board.io</title>
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#0d0e0a" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/base.css" />
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <!-- Shown until the session check resolves, so the app never flashes the
+         signed-out state at someone who is signed in. -->
+    <div id="boot" class="boot">
+      <span class="spinner"></span>
+    </div>
+
+    <!-- ============================ AUTH ============================ -->
+    <div id="auth" class="auth" hidden>
+      <section class="auth__pitch">
+        <a class="wordmark" href="/">
+          <span class="wordmark__dot" aria-hidden="true"></span>
+          job-board<span class="wordmark__tld">.io</span>
+        </a>
+        <div>
+          <h1 class="auth__headline">Every opening, ranked against what you actually want.</h1>
+          <p class="auth__blurb">
+            Pull openings from company career pages, score them against criteria you write in plain
+            English, and track every application from first look to offer.
+          </p>
+        </div>
+        <p class="mono auth__foot">Two-factor auth built in &middot; Delete means delete</p>
+      </section>
+
+      <section class="auth__panel">
+        <div class="auth__card">
+          <div id="auth-notice" class="notice" hidden></div>
+
+          <!-- Sign in -->
+          <form id="form-signin" class="auth__form" novalidate>
+            <p class="eyebrow">Welcome back</p>
+            <h2 class="auth__title">Sign in</h2>
+            <label class="field">
+              <span>Email</span>
+              <input class="input" type="email" name="email" autocomplete="username" required />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input
+                class="input"
+                type="password"
+                name="password"
+                autocomplete="current-password"
+                required
+              />
+            </label>
+            <button class="btn btn--primary btn--block" type="submit">Sign in</button>
+            <p class="auth__switch">
+              <button type="button" class="linkish" data-go="forgot">Forgot your password?</button>
+            </p>
+            <p class="auth__switch">
+              New here? <button type="button" class="linkish" data-go="signup">Create an account</button>
+            </p>
+          </form>
+
+          <!-- Sign up -->
+          <form id="form-signup" class="auth__form" novalidate hidden>
+            <p class="eyebrow">Get started</p>
+            <h2 class="auth__title">Create your account</h2>
+            <label class="field">
+              <span>Email</span>
+              <input class="input" type="email" name="email" autocomplete="username" required />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input
+                class="input"
+                type="password"
+                name="password"
+                autocomplete="new-password"
+                minlength="12"
+                required
+              />
+              <span class="hint">At least 12 characters. Length beats punctuation.</span>
+            </label>
+            <button class="btn btn--primary btn--block" type="submit">Create account</button>
+            <p class="auth__switch">
+              Already have one? <button type="button" class="linkish" data-go="signin">Sign in</button>
+            </p>
+          </form>
+
+          <!-- MFA challenge -->
+          <form id="form-mfa" class="auth__form" novalidate hidden>
+            <p class="eyebrow">Two-factor</p>
+            <h2 class="auth__title">Enter your code</h2>
+            <p class="auth__blurb auth__blurb--tight">
+              Open your authenticator app and enter the current six-digit code.
+            </p>
+            <label class="field">
+              <span id="mfa-label">Six-digit code</span>
+              <input
+                class="input input--code mono"
+                type="text"
+                name="code"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                maxlength="9"
+                required
+              />
+            </label>
+            <button class="btn btn--primary btn--block" type="submit">Verify</button>
+            <p class="auth__switch">
+              <button type="button" class="linkish" id="toggle-recovery">
+                Use a recovery code instead
+              </button>
+            </p>
+            <p class="auth__switch">
+              <button type="button" class="linkish" data-go="signin">Back to sign in</button>
+            </p>
+          </form>
+
+          <!-- Forgot password -->
+          <form id="form-forgot" class="auth__form" novalidate hidden>
+            <p class="eyebrow">Password reset</p>
+            <h2 class="auth__title">Reset your password</h2>
+            <p class="auth__blurb auth__blurb--tight">
+              We'll email a link if that address has an account.
+            </p>
+            <label class="field">
+              <span>Email</span>
+              <input class="input" type="email" name="email" autocomplete="username" required />
+            </label>
+            <button class="btn btn--primary btn--block" type="submit">Send reset link</button>
+            <p class="auth__switch">
+              <button type="button" class="linkish" data-go="signin">Back to sign in</button>
+            </p>
+          </form>
+
+          <!-- Choose a new password (arrives from the emailed link) -->
+          <form id="form-reset" class="auth__form" novalidate hidden>
+            <p class="eyebrow">Password reset</p>
+            <h2 class="auth__title">Choose a new password</h2>
+            <label class="field">
+              <span>New password</span>
+              <input
+                class="input"
+                type="password"
+                name="password"
+                autocomplete="new-password"
+                minlength="12"
+                required
+              />
+              <span class="hint">At least 12 characters.</span>
+            </label>
+            <button class="btn btn--primary btn--block" type="submit">Set password</button>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================= APP ============================= -->
+    <div id="app" class="app" hidden>
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar__head">
+          <a class="wordmark" href="/">
+            <span class="wordmark__dot" aria-hidden="true"></span>
+            job-board<span class="wordmark__tld">.io</span>
+          </a>
+          <button class="icon-btn sidebar__close" id="sidebar-close" aria-label="Close menu">
+            &times;
+          </button>
+        </div>
+
+        <div class="sidebar__section">
+          <p class="eyebrow eyebrow--muted">Boards</p>
+          <ul class="board-list" id="board-list"></ul>
+          <button class="btn btn--ghost btn--sm btn--block" id="new-board">+ New board</button>
+        </div>
+
+        <div class="sidebar__foot">
+          <button class="sidebar__account" id="open-account">
+            <span class="avatar mono" id="avatar">—</span>
+            <span class="sidebar__account-text">
+              <span class="sidebar__email" id="sidebar-email">—</span>
+              <span class="sidebar__sub mono" id="sidebar-sub">Account &amp; security</span>
+            </span>
+          </button>
+        </div>
+      </aside>
+
+      <div class="sidebar__scrim" id="sidebar-scrim" hidden></div>
+
+      <main class="main">
+        <header class="topbar">
+          <button class="icon-btn topbar__menu" id="sidebar-open" aria-label="Open menu">≡</button>
+
+          <div class="topbar__title">
+            <h1 id="board-name">—</h1>
+            <p class="mono topbar__stamp" id="board-stamp"></p>
+          </div>
+
+          <div class="topbar__tools">
+            <label class="search">
+              <span class="visually-hidden">Search jobs</span>
+              <input class="input input--search" id="search" type="search" placeholder="Search…" />
+            </label>
+
+            <div class="segmented" role="tablist" aria-label="View">
+              <button class="segmented__btn is-on" data-view="list" role="tab" aria-selected="true">
+                List
+              </button>
+              <button class="segmented__btn" data-view="board" role="tab" aria-selected="false">
+                Board
+              </button>
+            </div>
+
+            <button class="btn btn--ghost btn--sm" id="board-settings">Settings</button>
+            <button class="btn btn--primary btn--sm" id="refresh">Refresh</button>
+          </div>
+        </header>
+
+        <div class="banner" id="banner" hidden></div>
+
+        <div class="content" id="content">
+          <!-- List view -->
+          <section class="view" id="view-list">
+            <div class="filters">
+              <div class="chips" id="status-chips"></div>
+              <label class="minscore">
+                <span class="mono">Min score</span>
+                <input type="range" id="min-score" min="0" max="90" step="10" value="0" />
+                <output class="mono" id="min-score-out">0</output>
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table class="jobs">
+                <thead>
+                  <tr>
+                    <th scope="col" class="jobs__score">Score</th>
+                    <th scope="col">Role</th>
+                    <th scope="col" class="jobs__meta-col">Details</th>
+                    <th scope="col" class="jobs__status-col">Status</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody id="jobs-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- Kanban view -->
+          <section class="view" id="view-board" hidden>
+            <div class="kanban" id="kanban"></div>
+          </section>
+
+          <div class="empty" id="empty" hidden></div>
+        </div>
+      </main>
+
+      <!-- Job detail drawer -->
+      <aside class="drawer" id="drawer" hidden aria-label="Job details">
+        <div class="drawer__inner" id="drawer-inner"></div>
+      </aside>
+      <div class="drawer__scrim" id="drawer-scrim" hidden></div>
+    </div>
+
+    <!-- Modal host. Content is rendered per-modal by app.js. -->
+    <div class="modal" id="modal" hidden>
+      <div class="modal__scrim" id="modal-scrim"></div>
+      <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <header class="modal__head">
+          <h2 id="modal-title">—</h2>
+          <button class="icon-btn" id="modal-close" aria-label="Close">&times;</button>
+        </header>
+        <div class="modal__body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="/assets/app.js" type="module"></script>
+  </body>
+</html>

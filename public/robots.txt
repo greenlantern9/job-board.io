@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /$
+Disallow: /app
+Disallow: /api/
+Disallow: /verify
+Disallow: /reset
+Disallow: /unsubscribe
+
+Sitemap: https://job-board.io/sitemap.xml
