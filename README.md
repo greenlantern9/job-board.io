@@ -32,12 +32,9 @@ framework, no external requests from the browser.
 npm install
 ```
 
-Wrangler needs its `workerd` and `esbuild` binaries, whose install scripts npm
-holds back by default:
-
-```bash
-npm approve-scripts --allow-scripts-pending
-```
+npm may warn that `workerd` and `esbuild` have install scripts it held back.
+Wrangler runs fine without approving them; only if it fails to start do you
+need `npm approve-scripts --allow-scripts-pending`.
 
 ### 2. Create the database
 
