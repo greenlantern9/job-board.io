@@ -202,8 +202,13 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
 /**
  * Scores anything on the board that has not been scored yet. Split out from
  * refresh so that "rescore with new criteria" can reuse it without refetching.
+ *
+ * The limit is high on purpose. The heuristic is pure local CPU, so every job
+ * can afford one - and a job with no score at all shows up in the list as a
+ * bare 0 with no reason, which reads as broken. Model spend is bounded
+ * separately, inside scoreJobs, which only sends its first few batches.
  */
-export async function scoreUnscored(env, board, { limit = 60, force = false } = {}) {
+export async function scoreUnscored(env, board, { limit = 500, force = false } = {}) {
   const rows = await queryAll(
     env,
     force
@@ -231,13 +236,16 @@ export async function scoreUnscored(env, board, { limit = 60, force = false } = 
   const { results, warnings } = await scoreJobs(env, jobs, board);
   const now = nowIso();
 
-  await env.DB.batch(
-    [...results.entries()].map(([id, value]) =>
-      env.DB.prepare(
-        'UPDATE jobs SET score = ?, score_reason = ?, scored_by = ?, scored_at = ?, updated_at = ? WHERE id = ?'
-      ).bind(value.score, value.reason, value.scoredBy, now, now, id)
-    )
+  // Chunked: a single batch of several hundred statements risks tripping D1's
+  // per-batch limits on a board with a lot of new listings.
+  const updates = [...results.entries()].map(([id, value]) =>
+    env.DB.prepare(
+      'UPDATE jobs SET score = ?, score_reason = ?, scored_by = ?, scored_at = ?, updated_at = ? WHERE id = ?'
+    ).bind(value.score, value.reason, value.scoredBy, now, now, id)
   );
+  for (let i = 0; i < updates.length; i += 100) {
+    await env.DB.batch(updates.slice(i, i + 100));
+  }
 
   return { scored: results.size, warnings };
 }

@@ -166,7 +166,7 @@ stale" rather than "silently disconnected."
 npm test
 ```
 
-54 tests, no network, no mocks worth the name. The ones that matter:
+54 unit tests, no network, no mocks worth the name. The ones that matter:
 
 - **QR** — encode→decode round trip across all ten supported versions and both
   block groups, plus Reed-Solomon verified by the defining property (the
@@ -177,6 +177,18 @@ npm test
   salaries), HTML flattening, filter precedence, and the full SSRF blocklist.
 - **Ranking** — determinism, 0–100 bounds under hostile input, and the direction
   of every signal.
+
+There is also an end-to-end script that walks the whole day-one path against a
+running server — signup, board, live Greenhouse fetch, ranking, status change,
+2FA enrollment, sign-out, TOTP challenge, recovery code, account deletion:
+
+```bash
+npx wrangler dev          # in one terminal
+npm run test:e2e          # in another
+```
+
+It needs `.dev.vars` present (see Setup) and makes real requests to a public
+Greenhouse board, which is why it is not part of `npm test`.
 
 ---
 

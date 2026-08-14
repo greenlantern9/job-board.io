@@ -45,6 +45,14 @@
   box-sizing: border-box;
 }
 
+/* Load-bearing. The layout classes below (.app, .auth, .modal, .drawer, .boot)
+   set `display`, and a class selector outranks the user-agent's `[hidden]`
+   rule - so without this, toggling `hidden` on any of them does nothing and
+   the signed-out and signed-in views render on top of each other. */
+[hidden] {
+  display: none !important;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }

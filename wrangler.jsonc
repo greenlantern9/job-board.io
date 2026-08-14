@@ -10,11 +10,19 @@
 
   // run_worker_first matters: by default a request matching an uploaded file is
   // served straight from the edge and the Worker never runs, which would skip
-  // the session check on /app and the security headers on every page.
+  // the security headers on every page.
+  //
+  // html_handling must be "none". Its default ("auto-trailing-slash") makes the
+  // asset server 301 /index.html to / and /app.html to /app - which, combined
+  // with the Worker mapping / to /index.html, is an infinite redirect loop.
+  // With both handlers off the asset server is a literal file server and
+  // worker.js owns every routing decision.
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": true
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
   },
 
   // Cron drives both halves of the background work: refreshing boards whose
