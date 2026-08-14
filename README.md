@@ -1,4 +1,4 @@
-# job-board.io
+# job-boards.io
 
 Pull openings from company job boards, rank them against criteria you write in
 plain English, and track every application from first look to offer.
@@ -76,11 +76,24 @@ cannot read back.
 npm run deploy
 ```
 
-### 5. Point the domain at it
+### 5. The domain
 
-In the Cloudflare dashboard, add a route for `job-board.io/*` and
-`www.job-board.io/*` to the `job-board-io` Worker. The Worker 301s `www` to the
-apex itself, so one origin owns cookies, CSP, and the CSRF origin check.
+`wrangler.jsonc` already declares both `job-boards.io` and `www.job-boards.io`
+as custom domains, so `npm run deploy` creates and maintains the DNS records
+itself — there is no manual A/CNAME step. The zone just has to already exist in
+the same Cloudflare account as the Worker.
+
+The Worker 301s `www` to the apex, so one origin owns cookies, CSP, and the
+CSRF origin check. That is why `www` is routed to the Worker rather than
+redirected at the DNS layer — a redirect that never reaches the Worker cannot
+run.
+
+To move to a different domain later, one command rewrites every reference
+(config, canonical tags, sitemap, TOTP issuer, email templates):
+
+```bash
+node scripts/set-domain.mjs example.com
+```
 
 For email, verify your sending domain in Resend and set `NOTIFY_FROM` in
 `wrangler.jsonc` to an address on it.
@@ -163,7 +176,7 @@ stale" rather than "silently disconnected."
 npm test
 ```
 
-54 unit tests, no network, no mocks worth the name. The ones that matter:
+70 unit tests, no network, no mocks worth the name. The ones that matter:
 
 - **QR** — encode→decode round trip across all ten supported versions and both
   block groups, plus Reed-Solomon verified by the defining property (the
@@ -174,6 +187,9 @@ npm test
   salaries), HTML flattening, filter precedence, and the full SSRF blocklist.
 - **Ranking** — determinism, 0–100 bounds under hostile input, and the direction
   of every signal.
+- **HTTP** — canonical host/scheme (including the internal-http-hop case that
+  caused a redirect loop), the CSRF origin and content-type checks, and cookie
+  parsing.
 
 There is also an end-to-end script that walks the whole day-one path against a
 running server — signup, board, live Greenhouse fetch, ranking, status change,

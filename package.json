@@ -2,7 +2,7 @@
   "name": "job-board-io",
   "version": "0.1.0",
   "private": true,
-  "description": "job-board.io - prioritized job tracking with AI scoring, on Cloudflare Workers + D1",
+  "description": "job-boards.io - prioritized job tracking with AI scoring, on Cloudflare Workers + D1",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

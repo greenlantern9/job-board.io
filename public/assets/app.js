@@ -1,4 +1,4 @@
-// job-board.io client. Vanilla ES modules, no build step.
+// job-boards.io client. Vanilla ES modules, no build step.
 //
 // Everything user-supplied reaches the DOM through textContent or via the `h`
 // helper, never innerHTML - the one exception is the QR SVG, which the Worker

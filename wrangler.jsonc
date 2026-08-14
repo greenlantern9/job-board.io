@@ -1,5 +1,5 @@
 {
-  // job-board.io deploys as a Cloudflare Worker with static assets (`npx wrangler
+  // job-boards.io deploys as a Cloudflare Worker with static assets (`npx wrangler
   // deploy`), NOT as a Pages project. The Worker owns every route so that auth,
   // security headers, and the apex redirect apply to pages as well as /api/*.
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -7,6 +7,18 @@
   "main": "worker.js",
   "compatibility_date": "2026-08-01",
   "observability": { "enabled": true },
+
+  // Without this the Worker only ever answers on <name>.<subdomain>.workers.dev.
+  // "custom_domain": true makes Cloudflare create and maintain the DNS records
+  // itself, so there is no separate A/CNAME step - the zone just has to already
+  // exist in the same Cloudflare account.
+  //
+  // www is listed because the Worker 301s it to the apex; if www never reaches
+  // the Worker, that redirect can never run.
+  "routes": [
+    { "pattern": "job-boards.io", "custom_domain": true },
+    { "pattern": "www.job-boards.io", "custom_domain": true }
+  ],
 
   // run_worker_first matters: by default a request matching an uploaded file is
   // served straight from the edge and the Worker never runs, which would skip
@@ -67,8 +79,8 @@
   // Not secrets. Secrets (TOTP_ENC_KEY, SESSION_PEPPER, ANTHROPIC_API_KEY,
   // RESEND_API_KEY) are set with `wrangler secret put` - see README.
   "vars": {
-    "SITE_URL": "https://job-board.io",
-    "NOTIFY_FROM": "alerts@job-board.io",
+    "SITE_URL": "https://job-boards.io",
+    "NOTIFY_FROM": "alerts@job-boards.io",
     "SCORING_MODEL": "claude-opus-5"
   }
 }

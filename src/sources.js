@@ -7,7 +7,7 @@
 
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_DESCRIPTION_CHARS = 4000;
-const USER_AGENT = 'job-board.io/1.0 (+https://job-board.io)';
+const USER_AGENT = 'job-boards.io/1.0 (+https://job-boards.io)';
 
 export const SOURCE_KINDS = ['greenhouse', 'lever', 'ashby', 'rss'];
 

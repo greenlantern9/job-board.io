@@ -1,4 +1,4 @@
-// job-board.io - Cloudflare Worker entry point.
+// job-boards.io - Cloudflare Worker entry point.
 //
 // The Worker sits in front of everything (assets.run_worker_first), so the
 // apex redirect, security headers, and the session check on /app all apply to
@@ -15,6 +15,7 @@ import {
   verifyOrigin,
   requiresJsonBody,
   escapeHtml,
+  canonicalUrl,
   SESSION_COOKIE,
 } from './src/http.js';
 import { ensureSchema, run, nowIso } from './src/db.js';
@@ -63,7 +64,7 @@ function htmlPage({ title, heading, body, linkHref, linkLabel }, status = 200) {
   a{display:inline-block;padding:.7rem 1.4rem;border-radius:999px;background:#c3f53c;color:#0d0e0a;
     font-weight:600;text-decoration:none}
 </style></head>
-<body><div class="card"><div class="mark">job-board.io</div>
+<body><div class="card"><div class="mark">job-boards.io</div>
 <h1>${escapeHtml(heading)}</h1><p>${escapeHtml(body)}</p>
 ${linkHref ? `<a href="${escapeHtml(linkHref)}">${escapeHtml(linkLabel)}</a>` : ''}
 </div></body></html>`,
@@ -117,15 +118,11 @@ async function handleApi(request, env, executionCtx, url) {
 async function handleRequest(request, env, executionCtx) {
   const url = new URL(request.url);
 
-  // Canonical host. Keeping one origin means cookies, CSP, and Origin checks
-  // all agree with each other.
-  if (url.hostname.startsWith('www.')) {
-    url.hostname = url.hostname.slice(4);
-    return Response.redirect(url.toString(), 301);
-  }
-  if (url.protocol === 'http:' && url.hostname !== 'localhost' && !url.hostname.startsWith('127.')) {
-    url.protocol = 'https:';
-    return Response.redirect(url.toString(), 301);
+  // Canonical host and scheme, so that cookies, CSP, and the Origin check all
+  // agree with each other. See canonicalUrl() for why the comparison matters.
+  const canonical = canonicalUrl(request);
+  if (canonical !== request.url) {
+    return Response.redirect(canonical, 301);
   }
 
   await ensureSchema(env);
@@ -145,7 +142,7 @@ async function handleRequest(request, env, executionCtx) {
             heading: 'Address confirmed',
             body: 'Alerts can now reach you. Head back to your board.',
             linkHref: '/app',
-            linkLabel: 'Open job-board.io',
+            linkLabel: 'Open job-boards.io',
           }
         : {
             title: 'Link expired',
@@ -194,7 +191,7 @@ async function handleRequest(request, env, executionCtx) {
         heading: 'Nothing here',
         body: 'That page does not exist.',
         linkHref: '/',
-        linkLabel: 'Back to job-board.io',
+        linkLabel: 'Back to job-boards.io',
       },
       404
     );
@@ -209,7 +206,7 @@ async function runCron(env) {
   const due = await boardsDueForRefresh(env, { limit: BOARDS_PER_TICK });
   for (const board of due) {
     try {
-      await refreshBoard(env, board, { selfHost: new URL(env.SITE_URL || 'https://job-board.io').hostname });
+      await refreshBoard(env, board, { selfHost: new URL(env.SITE_URL || 'https://job-boards.io').hostname });
     } catch (err) {
       // One board's failure must not stop the rest of the tick, or a single bad
       // board would starve every other user's schedule.
@@ -245,7 +242,7 @@ export default {
             heading: 'Something went wrong',
             body: 'That is on us. Try again in a moment.',
             linkHref: '/',
-            linkLabel: 'Back to job-board.io',
+            linkLabel: 'Back to job-boards.io',
           },
           500
         )

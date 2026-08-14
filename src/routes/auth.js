@@ -53,10 +53,10 @@ async function issueVerificationEmail(env, user) {
     isoIn(24 * 3600 * 1000),
     nowIso()
   );
-  const url = `${env.SITE_URL || 'https://job-board.io'}/verify?token=${encodeURIComponent(token)}`;
+  const url = `${env.SITE_URL || 'https://job-boards.io'}/verify?token=${encodeURIComponent(token)}`;
   return sendTransactional(env, {
     to: user.email,
-    subject: 'Confirm your job-board.io address',
+    subject: 'Confirm your job-boards.io address',
     heading: 'Confirm your email',
     body: 'Alerts only go to confirmed addresses. This link is good for 24 hours.',
     actionUrl: url,
@@ -86,7 +86,7 @@ async function signup(request, env) {
       subject: 'Someone tried to sign up with your address',
       heading: 'You already have an account',
       body: 'A signup was attempted with this address. If that was you, sign in instead.',
-      actionUrl: `${env.SITE_URL || 'https://job-board.io'}/app`,
+      actionUrl: `${env.SITE_URL || 'https://job-boards.io'}/app`,
       actionLabel: 'Sign in',
     });
     return json({ ok: true, pendingVerification: true });
@@ -216,10 +216,10 @@ async function forgotPassword(request, env) {
     );
     await sendTransactional(env, {
       to: user.email,
-      subject: 'Reset your job-board.io password',
+      subject: 'Reset your job-boards.io password',
       heading: 'Reset your password',
       body: 'This link works once and expires in an hour.',
-      actionUrl: `${env.SITE_URL || 'https://job-board.io'}/reset?token=${encodeURIComponent(token)}`,
+      actionUrl: `${env.SITE_URL || 'https://job-boards.io'}/reset?token=${encodeURIComponent(token)}`,
       actionLabel: 'Choose a new password',
     });
   }
@@ -281,7 +281,7 @@ async function changePassword(request, env, ctx) {
 async function startMfa(request, env, ctx) {
   const secret = generateSecret();
   await storeTotpSecret(env, ctx.user.id, secret, { pending: true });
-  const uri = otpauthUri({ issuer: 'job-board.io', account: ctx.user.email, secret });
+  const uri = otpauthUri({ issuer: 'job-boards.io', account: ctx.user.email, secret });
   return json({
     ok: true,
     secret: formatSecretForDisplay(secret),

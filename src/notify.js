@@ -26,7 +26,7 @@ export async function unsubscribeLink(env, rule) {
     uid: rule.user_id,
     exp: Date.now() + 365 * 86400000,
   });
-  return `${env.SITE_URL || 'https://job-board.io'}/unsubscribe?token=${encodeURIComponent(token)}`;
+  return `${env.SITE_URL || 'https://job-boards.io'}/unsubscribe?token=${encodeURIComponent(token)}`;
 }
 
 export async function applyUnsubscribe(env, token) {
@@ -144,13 +144,13 @@ export function renderEmail({ jobs, heading, intro, appUrl, unsubscribeUrl }) {
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;padding:32px;">
         <tr><td>
-          <div style="font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#8a9160;">job-board.io</div>
+          <div style="font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#8a9160;">job-boards.io</div>
           <h1 style="margin:14px 0 6px;font:600 24px/1.25 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#14150f;">${escapeHtml(heading)}</h1>
           <p style="margin:0;font:400 15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#5f6357;">${escapeHtml(intro)}</p>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;">${rows}</table>
           <a href="${escapeHtml(appUrl)}" style="display:inline-block;margin-top:24px;padding:12px 22px;background:#14150f;color:#f2f4e6;border-radius:999px;font:600 14px/1 -apple-system,sans-serif;text-decoration:none;">Open your board</a>
           <p style="margin:28px 0 0;font:400 12px/1.6 -apple-system,sans-serif;color:#9aa08a;">
-            You set up this alert on job-board.io.
+            You set up this alert on job-boards.io.
             <a href="${escapeHtml(unsubscribeUrl)}" style="color:#9aa08a;">Turn it off</a>.
           </p>
         </td></tr>
@@ -175,7 +175,7 @@ async function deliver(env, { to, subject, html, text }) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: env.NOTIFY_FROM || 'alerts@job-board.io',
+        from: env.NOTIFY_FROM || 'alerts@job-boards.io',
         to: [to],
         subject,
         html,
@@ -205,7 +205,7 @@ async function sendNotification(env, { user, rule, jobs, heading, intro, dedupeK
   );
   if (existing) return null;
 
-  const appUrl = `${env.SITE_URL || 'https://job-board.io'}/app`;
+  const appUrl = `${env.SITE_URL || 'https://job-boards.io'}/app`;
   const unsubscribeUrl = await unsubscribeLink(env, rule);
   const { html, text } = renderEmail({ jobs, heading, intro, appUrl, unsubscribeUrl });
   const subject =
@@ -310,7 +310,7 @@ export async function sendTransactional(env, { to, subject, heading, body, actio
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:14px;padding:32px;">
         <tr><td>
-          <div style="font:600 13px/1 ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#8a9160;">job-board.io</div>
+          <div style="font:600 13px/1 ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#8a9160;">job-boards.io</div>
           <h1 style="margin:14px 0 10px;font:600 22px/1.3 -apple-system,'Segoe UI',sans-serif;color:#14150f;">${escapeHtml(heading)}</h1>
           <p style="margin:0 0 24px;font:400 15px/1.6 -apple-system,'Segoe UI',sans-serif;color:#5f6357;">${escapeHtml(body)}</p>
           <a href="${escapeHtml(actionUrl)}" style="display:inline-block;padding:12px 22px;background:#14150f;color:#f2f4e6;border-radius:999px;font:600 14px/1 -apple-system,sans-serif;text-decoration:none;">${escapeHtml(actionLabel)}</a>

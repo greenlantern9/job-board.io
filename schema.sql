@@ -1,4 +1,4 @@
--- job-board.io schema (Cloudflare D1 / SQLite)
+-- job-boards.io schema (Cloudflare D1 / SQLite)
 --
 -- worker.js applies this on demand the first time a query finds a table
 -- missing, so you do not have to run it by hand. It is kept as the readable

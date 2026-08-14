@@ -140,6 +140,40 @@ export function withSecurityHeaders(response) {
   });
 }
 
+/**
+ * The canonical URL for a request: apex host, https scheme.
+ *
+ * Returns a string the caller compares against request.url - a redirect is only
+ * warranted when they differ. That comparison is the whole point: a redirect to
+ * the same URL is an unbounded loop rather than a visible error, and this
+ * codebase has produced that bug twice.
+ *
+ * The visitor's scheme comes from CF-Visitor, not url.protocol. Cloudflare
+ * terminates TLS before the Worker runs, so url.protocol describes an internal
+ * hop and says nothing about how the browser actually connected.
+ */
+export function canonicalUrl(request) {
+  const target = new URL(request.url);
+
+  if (target.hostname.startsWith('www.')) {
+    target.hostname = target.hostname.slice(4);
+  }
+
+  // Local development is served over plaintext on purpose.
+  const isLocal = /^(localhost$|127\.|\[?::1\]?$|0\.0\.0\.0$)/.test(target.hostname);
+  if (!isLocal) {
+    let scheme = null;
+    try {
+      scheme = JSON.parse(request.headers.get('CF-Visitor') || '{}').scheme || null;
+    } catch {
+      scheme = null;
+    }
+    if (scheme === 'http') target.protocol = 'https:';
+  }
+
+  return target.toString();
+}
+
 export function clientIp(request) {
   return (
     request.headers.get('CF-Connecting-IP') ||
