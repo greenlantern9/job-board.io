@@ -32,6 +32,7 @@ import {
   consumeRecoveryCode,
   disableMfa,
   publicUser,
+  passwordPepper,
   SESSION_TTL_MS,
 } from '../auth.js';
 import { generateSecret, verifyTotp, otpauthUri, formatSecretForDisplay } from '../totp.js';
@@ -247,7 +248,7 @@ async function resetPassword(request, env) {
   await run(
     env,
     `UPDATE users SET password_hash = ?, failed_logins = 0, locked_until = '', updated_at = ? WHERE id = ?`,
-    await hashPassword(body.password),
+    await hashPassword(body.password, passwordPepper(env)),
     nowIso(),
     row.user_id
   );
@@ -270,7 +271,7 @@ async function changePassword(request, env, ctx) {
   await run(
     env,
     'UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?',
-    await hashPassword(body.newPassword),
+    await hashPassword(body.newPassword, passwordPepper(env)),
     nowIso(),
     ctx.user.id
   );

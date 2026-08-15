@@ -1,12 +1,22 @@
 // Primitives built on WebCrypto, which is all the Workers runtime gives us -
-// no bcrypt/argon2 native modules. PBKDF2-SHA256 at 210k iterations is the
-// OWASP floor for this construction and is what we can afford inside a
-// Worker's CPU budget.
+// no bcrypt/argon2 native modules.
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-export const PBKDF2_ITERATIONS = 210000;
+/**
+ * The Workers runtime refuses more than 100,000 PBKDF2 iterations, throwing
+ * NotSupportedError("Pbkdf2 failed: iteration counts above 100000 are not
+ * supported"). It is a hard platform ceiling, not a tunable - `wrangler dev`
+ * does not enforce it, so exceeding it passes every local test and then fails
+ * on the first real signup in production.
+ *
+ * 100k is below the OWASP recommendation of 600k for PBKDF2-SHA256, so the
+ * pepper below is doing real work rather than being belt-and-braces: it is what
+ * keeps a database-only leak uncrackable at this iteration count.
+ */
+export const PBKDF2_ITERATIONS = 100000;
+export const PBKDF2_MAX_SUPPORTED = 100000;
 
 export function randomBytes(n) {
   const b = new Uint8Array(n);
@@ -75,20 +85,50 @@ async function pbkdf2(password, salt, iterations) {
   return new Uint8Array(bits);
 }
 
-/** Returns a self-describing string so the iteration count can be raised later
- *  without invalidating existing passwords. */
-export async function hashPassword(password) {
-  const salt = randomBytes(16);
-  const hash = await pbkdf2(password, salt, PBKDF2_ITERATIONS);
-  return `pbkdf2$sha256$${PBKDF2_ITERATIONS}$${toBase64(salt)}$${toBase64(hash)}`;
+/**
+ * HMAC the password with a server-side secret before it reaches PBKDF2.
+ *
+ * The pepper lives in a Worker secret, never in the database. That is the whole
+ * point: at 100k iterations a stolen `users` table would otherwise be within
+ * reach of a serious offline attack, but without the pepper the stored hashes
+ * are not attackable at all - there is nothing to guess against.
+ */
+async function applyPepper(password, pepper) {
+  if (!pepper) return password;
+  return toBase64(await hmac(pepper, password));
 }
 
-export async function verifyPassword(password, stored) {
+/**
+ * Returns a self-describing string, so parameters can change later without
+ * invalidating existing passwords. The scheme prefix records whether a pepper
+ * was applied: `pbkdf2p` means peppered, `pbkdf2` means not.
+ */
+export async function hashPassword(password, pepper = '') {
+  const salt = randomBytes(16);
+  const hash = await pbkdf2(await applyPepper(password, pepper), salt, PBKDF2_ITERATIONS);
+  const scheme = pepper ? 'pbkdf2p' : 'pbkdf2';
+  return `${scheme}$sha256$${PBKDF2_ITERATIONS}$${toBase64(salt)}$${toBase64(hash)}`;
+}
+
+export async function verifyPassword(password, stored, pepper = '') {
   if (typeof stored !== 'string') return false;
   const parts = stored.split('$');
-  if (parts.length !== 5 || parts[0] !== 'pbkdf2' || parts[1] !== 'sha256') return false;
+  if (parts.length !== 5) return false;
+
+  const scheme = parts[0];
+  if ((scheme !== 'pbkdf2' && scheme !== 'pbkdf2p') || parts[1] !== 'sha256') return false;
+  // A peppered hash cannot be checked without the pepper. Refuse rather than
+  // silently falling back and rejecting every correct password as wrong.
+  if (scheme === 'pbkdf2p' && !pepper) return false;
+
   const iterations = Number(parts[2]);
-  if (!Number.isInteger(iterations) || iterations < 1000 || iterations > 5000000) return false;
+  // Reject counts the runtime cannot execute. Calling deriveBits above the cap
+  // throws, and an exception here would surface as a 500 rather than a failed
+  // sign-in.
+  if (!Number.isInteger(iterations) || iterations < 1000 || iterations > PBKDF2_MAX_SUPPORTED) {
+    return false;
+  }
+
   let salt, expected;
   try {
     salt = fromBase64(parts[3]);
@@ -96,14 +136,32 @@ export async function verifyPassword(password, stored) {
   } catch {
     return false;
   }
-  const actual = await pbkdf2(password, salt, iterations);
+
+  const input = scheme === 'pbkdf2p' ? await applyPepper(password, pepper) : password;
+  const actual = await pbkdf2(input, salt, iterations);
   return timingSafeEqual(actual, expected);
 }
 
-/** True when a stored hash was made with weaker parameters than we now use. */
-export function needsRehash(stored) {
+/**
+ * True when a stored hash was made with weaker parameters than we now use,
+ * predates the pepper, or cannot be executed by this runtime at all. Callers
+ * rehash transparently on the next successful sign-in.
+ *
+ * Note the ceiling case is unreachable in practice: a hash above the cap can
+ * never verify, so its owner can never sign in to trigger the rehash and has to
+ * go through password reset. It is flagged anyway so the state is at least
+ * visible rather than silently looking healthy.
+ */
+export function needsRehash(stored, pepper = '') {
   const parts = String(stored || '').split('$');
-  return parts.length !== 5 || Number(parts[2]) < PBKDF2_ITERATIONS;
+  if (parts.length !== 5) return true;
+  if (pepper && parts[0] !== 'pbkdf2p') return true;
+
+  const iterations = Number(parts[2]);
+  if (!Number.isInteger(iterations)) return true;
+  if (iterations < PBKDF2_ITERATIONS) return true; // weaker than current policy
+  if (iterations > PBKDF2_MAX_SUPPORTED) return true; // unusable on this runtime
+  return false;
 }
 
 async function aesKeyFrom(secret) {

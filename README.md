@@ -53,6 +53,7 @@ npm run db:init
 ### 3. Set secrets
 
 ```bash
+npx wrangler secret put PASSWORD_PEPPER     # strongly recommended - see below
 npx wrangler secret put TOTP_ENC_KEY        # required before anyone can enable 2FA
 npx wrangler secret put SESSION_PEPPER      # signs unsubscribe links
 npx wrangler secret put ANTHROPIC_API_KEY   # optional - enables AI ranking
@@ -69,6 +70,17 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 enrolled — existing secrets become undecryptable and those users are locked to
 their recovery codes. The code fails closed rather than storing a secret it
 cannot read back.
+
+`PASSWORD_PEPPER` is HMAC'd into every password before it reaches PBKDF2. It
+matters more than it looks: the Workers runtime caps PBKDF2 at 100,000
+iterations (see below), which is under the OWASP recommendation, and the pepper
+is what makes a stolen `users` table unattackable regardless — the secret is not
+in the database, so there is nothing to guess against.
+
+It is optional. Without it, hashes are written unpeppered and still verify; set
+it later and each password upgrades silently on that user's next sign-in.
+**Once set, do not rotate or remove it** — every peppered hash stops verifying
+and those users need a password reset.
 
 ### 4. Deploy
 
@@ -152,9 +164,17 @@ stale" rather than "silently disconnected."
 
 ## Security notes
 
-- Passwords: PBKDF2-SHA256, 210k iterations, per-user salt, transparent rehash
-  when the parameters move. Verification runs even for unknown emails so
-  response timing does not reveal who has an account.
+- Passwords: PBKDF2-SHA256 at 100,000 iterations with a per-user salt, an
+  HMAC pepper from a Worker secret, and transparent rehash when the parameters
+  move. Verification runs even for unknown emails so response timing does not
+  reveal who has an account.
+
+  100k is not a choice — **the Workers runtime refuses more than 100,000
+  iterations**, throwing `NotSupportedError` above it, and `wrangler dev` does
+  not enforce the ceiling. Setting it higher passes every local test and then
+  throws on the first real signup in production. `test/crypto.test.js` pins this
+  so it cannot regress. The pepper is the compensating control, since 100k alone
+  is below the OWASP recommendation of 600k.
 - Sessions: only `SHA-256(token)` is stored, so a database leak yields nothing
   replayable. A password change or reset kills every other session.
 - 2FA: RFC 6238 TOTP, ±1 window, constant-time comparison, secrets AES-GCM

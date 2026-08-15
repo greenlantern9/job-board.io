@@ -11,8 +11,10 @@ import {
   encryptString,
   decryptString,
   randomBytes,
+  toBase64,
   toBase64Url,
   timingSafeEqual,
+  PBKDF2_ITERATIONS,
 } from './crypto.js';
 import { queryOne, queryAll, run, nowIso, isoIn, parseJson } from './db.js';
 
@@ -70,6 +72,13 @@ export async function findUserById(env, id) {
   return queryOne(env, 'SELECT * FROM users WHERE id = ?', id);
 }
 
+/** Server-side password pepper. Optional, but strongly recommended - see
+ *  applyPepper() in crypto.js for why it carries real weight at 100k
+ *  iterations. Absent, hashes are written unpeppered and still verify. */
+export function passwordPepper(env) {
+  return env.PASSWORD_PEPPER || '';
+}
+
 export async function createUser(env, { email, password, timezone = 'UTC' }) {
   const id = newId('usr_');
   const now = nowIso();
@@ -79,7 +88,7 @@ export async function createUser(env, { email, password, timezone = 'UTC' }) {
      VALUES (?, ?, ?, ?, ?, ?)`,
     id,
     normalizeEmail(email),
-    await hashPassword(password),
+    await hashPassword(password, passwordPepper(env)),
     timezone,
     now,
     now
@@ -97,16 +106,27 @@ export function isLocked(user) {
  * timing does not reveal which emails are registered.
  */
 export async function checkPassword(env, user, password) {
+  const pepper = passwordPepper(env);
+
   if (!user) {
-    await verifyPassword(password, `pbkdf2$sha256$210000$${toBase64Url(randomBytes(16))}$${toBase64Url(randomBytes(32))}`);
+    // Burn the same CPU for an unknown address as for a real one. The
+    // parameters must be ones verifyPassword will actually execute - an
+    // out-of-range iteration count or malformed base64 short-circuits before
+    // the KDF runs and hands back the timing oracle this exists to close.
+    await verifyPassword(
+      password,
+      `${pepper ? 'pbkdf2p' : 'pbkdf2'}$sha256$${PBKDF2_ITERATIONS}$${toBase64(randomBytes(16))}$${toBase64(randomBytes(32))}`,
+      pepper
+    );
     return false;
   }
-  const ok = await verifyPassword(password, user.password_hash);
+  const ok = await verifyPassword(password, user.password_hash, pepper);
   if (ok) {
     const patch = { failed_logins: 0, locked_until: '' };
-    // Transparently upgrade the stored hash if our parameters have moved on.
-    if (needsRehash(user.password_hash)) {
-      patch.password_hash = await hashPassword(password);
+    // Transparently upgrade the stored hash if our parameters have moved on,
+    // including adopting the pepper once one is configured.
+    if (needsRehash(user.password_hash, pepper)) {
+      patch.password_hash = await hashPassword(password, pepper);
     }
     await run(
       env,

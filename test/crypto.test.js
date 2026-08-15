@@ -13,14 +13,71 @@ import {
   fromBase64Url,
   newId,
   newSecretToken,
+  PBKDF2_ITERATIONS,
+  PBKDF2_MAX_SUPPORTED,
 } from '../src/crypto.js';
+
+// This is the regression that took production down on the first real signup.
+// The Workers runtime throws NotSupportedError above 100,000 PBKDF2 iterations
+// and `wrangler dev` does not enforce the ceiling, so nothing local catches it.
+test('iteration count stays within the Workers platform ceiling', () => {
+  assert.ok(
+    PBKDF2_ITERATIONS <= PBKDF2_MAX_SUPPORTED,
+    `PBKDF2_ITERATIONS (${PBKDF2_ITERATIONS}) exceeds the Workers cap of ${PBKDF2_MAX_SUPPORTED}; ` +
+      'deriveBits will throw in production even though wrangler dev accepts it'
+  );
+  assert.equal(PBKDF2_MAX_SUPPORTED, 100000);
+});
+
+test('a stored hash above the platform ceiling fails closed instead of throwing', async () => {
+  // Left behind by an older deployment. Calling deriveBits with this count
+  // would throw and surface as a 500; it must read as "wrong password".
+  const legacy = `pbkdf2$sha256$210000$${'A'.repeat(24)}$${'B'.repeat(44)}`;
+  assert.equal(await verifyPassword('anything', legacy), false);
+  assert.equal(needsRehash(legacy), true);
+});
 
 test('password hashing round-trips and rejects wrong passwords', async () => {
   const stored = await hashPassword('correct horse battery staple');
-  assert.match(stored, /^pbkdf2\$sha256\$210000\$/);
+  assert.match(stored, /^pbkdf2\$sha256\$100000\$/);
   assert.equal(await verifyPassword('correct horse battery staple', stored), true);
   assert.equal(await verifyPassword('Correct horse battery staple', stored), false);
   assert.equal(await verifyPassword('', stored), false);
+});
+
+// --- pepper ----------------------------------------------------------------
+
+const PEPPER = 'a-server-side-secret';
+
+test('a peppered hash is marked as such and round-trips', async () => {
+  const stored = await hashPassword('correct horse battery staple', PEPPER);
+  assert.match(stored, /^pbkdf2p\$sha256\$100000\$/);
+  assert.equal(await verifyPassword('correct horse battery staple', stored, PEPPER), true);
+  assert.equal(await verifyPassword('wrong password here', stored, PEPPER), false);
+});
+
+test('a peppered hash is useless without the pepper', async () => {
+  const stored = await hashPassword('correct horse battery staple', PEPPER);
+  // This is the property the pepper exists for: a leaked users table cannot be
+  // attacked offline, because the secret is not in the database.
+  assert.equal(await verifyPassword('correct horse battery staple', stored, ''), false);
+  assert.equal(await verifyPassword('correct horse battery staple', stored, 'wrong-pepper'), false);
+});
+
+test('the pepper changes the derived hash', async () => {
+  const plain = await hashPassword('same password input', '');
+  const peppered = await hashPassword('same password input', PEPPER);
+  assert.notEqual(plain.split('$')[0], peppered.split('$')[0]);
+  assert.equal(await verifyPassword('same password input', plain, PEPPER), true, 'unpeppered hashes still verify');
+});
+
+test('unpeppered hashes are flagged for upgrade once a pepper exists', async () => {
+  const plain = await hashPassword('some password value');
+  assert.equal(needsRehash(plain, ''), false);
+  assert.equal(needsRehash(plain, PEPPER), true, 'should adopt the pepper on next sign-in');
+
+  const peppered = await hashPassword('some password value', PEPPER);
+  assert.equal(needsRehash(peppered, PEPPER), false);
 });
 
 test('the same password produces different hashes (salted)', async () => {
