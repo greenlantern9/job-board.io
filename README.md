@@ -14,11 +14,19 @@ framework, no external requests from the browser.
   management, email verification, and password reset.
 - **Boards** hold your criteria — a free-text prompt *and* a structured filter
   form. Both feed the same ranking.
-- **Sources are automatic.** Creating a board triggers discovery: the criteria
-  go to the model, it proposes employers, each is probed against the live
-  Greenhouse / Lever / Ashby APIs, and only the ones with a reachable board and
-  open roles get connected. Re-checked weekly — dead or silent sources are
-  retired and replaced. Manual add is still there, but it is no longer a step
+- **Sources are automatic, and wide by default.** Two layers:
+  - **Cross-company aggregators** — Remotive, Arbeitnow, RemoteOK, Himalayas —
+    are attached to every board and searched with a query derived from its
+    criteria. These cover thousands of employers in one request and need no API
+    key, so even a board that cannot run discovery is not limited to a handful
+    of companies.
+  - **Per-company ATS boards** — Greenhouse, Lever, Ashby, SmartRecruiters —
+    discovered from the criteria, each probed live before connecting, so only
+    companies with a reachable board and open roles get added.
+
+  Re-checked weekly: dead or silent company boards are retired and replaced.
+  Aggregators are never retired — a quiet week means the query matched nothing,
+  not that the source died. Manual add still exists but is no longer a step
   anyone has to take.
 - **Company curation.** Name companies you care about and either *prioritize*
   them (ranking boost) or *limit* the board to them (hard allowlist). Either
@@ -138,7 +146,11 @@ Two layers, and the first is always the floor:
 
 1. **Heuristic** (`src/rank.js`) — deterministic 0–100 from criteria overlap
    (title matches count double), required keywords, remote match, published
-   salary against your floor, posting age, and seniority distance. No network,
+   salary against your floor, seniority distance, curated-company membership,
+   and **posting age, which is the heaviest single signal at up to ±22**.
+   Applying early is one of the few things a candidate controls, so a good match
+   from Tuesday outranks a perfect match from March. Undated postings are left
+   neutral rather than penalised — many feeds simply omit the field. No network,
    no key, same input always gives the same number.
 
 2. **Claude** (`src/scoring.js`) — batches of 15 jobs go to `claude-opus-5` with

@@ -16,7 +16,7 @@
 import { suggestCompanies } from './suggest.js';
 import { queryAll, queryOne, run, nowIso, parseJson } from './db.js';
 import { newId } from './crypto.js';
-import { fetchSource } from './sources.js';
+import { fetchSource, AGGREGATOR_KINDS, ATS_KINDS } from './sources.js';
 
 /** Enough breadth to fill a board without spending the whole refresh budget. */
 export const TARGET_SOURCES = 12;
@@ -26,6 +26,70 @@ const EMPTY_STREAK_LIMIT = 4;
 
 /** How often curation revisits a board that is healthy. */
 export const RECURATE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+
+const AGGREGATOR_LABELS = {
+  remotive: 'Remotive (remote roles, all companies)',
+  arbeitnow: 'Arbeitnow (all companies)',
+  remoteok: 'RemoteOK (remote roles, all companies)',
+  himalayas: 'Himalayas (remote roles, all companies)',
+};
+
+const QUERY_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'you', 'our', 'are', 'will', 'that', 'this', 'have', 'from',
+  'want', 'looking', 'work', 'working', 'team', 'role', 'roles', 'job', 'jobs', 'position',
+  'company', 'companies', 'experience', 'years', 'least', 'not', 'interested', 'prefer',
+  'preferably', 'ideally', 'would', 'like', 'want', 'any', 'some', 'more', 'than', 'also',
+]);
+
+/**
+ * The search string handed to aggregators. Their identifier is a query rather
+ * than a company, so it has to come from the criteria - and it has to stay in
+ * step when those criteria change.
+ */
+export function boardQuery(board) {
+  const filters = board.filters || {};
+  if (filters.keywords && filters.keywords.trim()) return filters.keywords.trim().slice(0, 120);
+
+  // No explicit keywords: pull the distinctive words out of the prompt. Broad
+  // beats narrow here, because the ranking is what sorts the result - the
+  // query only has to avoid pulling the entire internet.
+  const words = String(board.prompt || '')
+    .toLowerCase()
+    .split(/[^a-z0-9+#.]+/)
+    .filter((w) => w.length > 2 && !QUERY_STOPWORDS.has(w));
+
+  return [...new Set(words)].slice(0, 6).join(', ');
+}
+
+/**
+ * Every board gets the cross-company aggregators. Without them a board only
+ * ever sees the dozen employers discovery happened to pick, which quietly caps
+ * what the user can find no matter how good the ranking is.
+ */
+async function ensureAggregators(env, board, existing) {
+  const query = boardQuery(board);
+  let added = 0;
+
+  for (const kind of AGGREGATOR_KINDS) {
+    const current = existing.find((s) => s.kind === kind);
+    if (current) {
+      // Criteria drift otherwise leaves the aggregators searching for whatever
+      // the board used to be about.
+      if (current.identifier !== query) {
+        await run(env, 'UPDATE sources SET identifier = ? WHERE id = ?', query, current.id);
+      }
+      continue;
+    }
+    const inserted = await insertSource(env, board, {
+      kind,
+      identifier: query,
+      label: AGGREGATOR_LABELS[kind],
+      auto: 1,
+    });
+    if (inserted) added++;
+  }
+  return added;
+}
 
 function boardCompanies(board) {
   return String((board.filters || {}).companies || '')
@@ -48,7 +112,12 @@ async function pruneDeadSources(env, board) {
   );
 
   const doomed = sources.filter(
-    (s) => s.last_status === 'error' || (s.empty_streak || 0) >= EMPTY_STREAK_LIMIT
+    // Aggregators are the safety net and are never retired. A quiet week means
+    // the query matched nothing, not that the source is dead, and deleting one
+    // would silently narrow the board back to whatever companies it knows.
+    (s) =>
+      !AGGREGATOR_KINDS.includes(s.kind) &&
+      (s.last_status === 'error' || (s.empty_streak || 0) >= EMPTY_STREAK_LIMIT)
   );
   if (doomed.length === 0) return { removed: 0, names: [] };
 
@@ -77,7 +146,7 @@ async function connectNamedCompanies(env, board, existing, selfHost) {
   for (const name of missing.slice(0, 6)) {
     const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!slug) continue;
-    for (const kind of ['greenhouse', 'lever', 'ashby']) {
+    for (const kind of ATS_KINDS) {
       try {
         const jobs = await fetchSource({ kind, identifier: slug }, { selfHost });
         if (jobs.length === 0) continue;
@@ -135,14 +204,25 @@ export async function curateBoard(env, board, { selfHost, force = false } = {}) 
 
     let existing = await queryAll(env, 'SELECT * FROM sources WHERE board_id = ?', board.id);
 
+    // Widest net first, and it needs no API key - so even a board that cannot
+    // run discovery still pulls from thousands of companies.
+    summary.added += await ensureAggregators(env, board, existing);
+    existing = await queryAll(env, 'SELECT * FROM sources WHERE board_id = ?', board.id);
+
     const named = await connectNamedCompanies(env, board, existing, selfHost);
     summary.added += named.added;
     if (named.added) existing = await queryAll(env, 'SELECT * FROM sources WHERE board_id = ?', board.id);
 
     // In "limit" mode the user has told us exactly which employers matter.
-    // Suggesting others would be working against them.
+    // Suggesting others would be working against them. The aggregators stay:
+    // the company filter drops anything off-list at ingest, so they can only
+    // add postings at the named companies that the ATS boards missed.
     const limited = (board.filters || {}).companyMode === 'limit' && boardCompanies(board).length > 0;
-    const shortfall = TARGET_SOURCES - existing.length;
+    // Aggregators are not companies, so they must not count toward the company
+    // target - otherwise four of them would satisfy it and discovery would
+    // never run.
+    const companyCount = existing.filter((s) => !AGGREGATOR_KINDS.includes(s.kind)).length;
+    const shortfall = TARGET_SOURCES - companyCount;
 
     if (!limited && (force || shortfall > 0)) {
       const known = [

@@ -73,6 +73,8 @@ const state = {
   view: 'list',
   statusFilter: '',
   minScore: 0,
+  maxAgeDays: 0,
+  sort: 'score',
   query: '',
   lastSync: null,
   pollTimer: null,
@@ -104,6 +106,28 @@ function relativeTime(iso) {
   const days = Math.round(hours / 24);
   return days === 1 ? 'yesterday' : `${days}d ago`;
 }
+
+/** Age of a posting, in the compact form the list column uses. */
+function postedAge(job) {
+  if (!job.postedAt) return { label: 'undated', band: 'unknown', days: null };
+  const days = (Date.now() - new Date(job.postedAt).getTime()) / 86400000;
+  if (!Number.isFinite(days) || days < 0) return { label: 'undated', band: 'unknown', days: null };
+  if (days < 1) return { label: 'today', band: 'fresh', days };
+  if (days < 2) return { label: '1d', band: 'fresh', days };
+  if (days < 7) return { label: `${Math.round(days)}d`, band: 'fresh', days };
+  if (days < 30) return { label: `${Math.round(days / 7)}w`, band: 'recent', days };
+  if (days < 365) return { label: `${Math.round(days / 30)}mo`, band: 'stale', days };
+  return { label: '1y+', band: 'stale', days };
+}
+
+const AGE_PRESETS = [
+  [0, 'Any age'],
+  [1, 'Today'],
+  [3, 'Last 3 days'],
+  [7, 'Last week'],
+  [14, 'Last 2 weeks'],
+  [30, 'Last month'],
+];
 
 function salaryText(job) {
   if (job.salaryRaw) return job.salaryRaw;
@@ -405,6 +429,8 @@ async function loadJobs() {
   if (state.statusFilter) params.set('status', state.statusFilter);
   if (state.minScore > 0) params.set('minScore', String(state.minScore));
   if (state.query) params.set('q', state.query);
+  if (state.maxAgeDays > 0) params.set('maxAgeDays', String(state.maxAgeDays));
+  if (state.sort === 'newest') params.set('sort', 'newest');
 
   const { jobs, board } = await api(`/api/jobs?${params}`);
   state.jobs = jobs;
@@ -466,6 +492,43 @@ function renderStatusChips() {
 
   wrap.append(chip('', 'All'));
   for (const status of STATUSES) wrap.append(chip(status.key, status.label));
+
+  // Recency controls sit beside the status chips: how fresh, and whether to
+  // order by freshness instead of fit.
+  const controls = clear($('#recency-controls'));
+  controls.append(
+    h(
+      'select',
+      {
+        class: 'select',
+        style: 'width:auto;padding:.32rem 1.9rem .32rem .7rem;font-size:.8125rem',
+        onchange: async (event) => {
+          state.maxAgeDays = Number(event.target.value);
+          await loadJobs();
+        },
+      },
+      ...AGE_PRESETS.map(([days, label]) =>
+        h('option', { value: String(days), selected: state.maxAgeDays === days }, label)
+      )
+    ),
+    h(
+      'div',
+      { class: 'segmented' },
+      ...[
+        ['score', 'Best fit'],
+        ['newest', 'Newest'],
+      ].map(([key, label]) =>
+        h('button', {
+          class: `segmented__btn${state.sort === key ? ' is-on' : ''}`,
+          text: label,
+          onclick: async () => {
+            state.sort = key;
+            await loadJobs();
+          },
+        })
+      )
+    )
+  );
 }
 
 // --- list view -------------------------------------------------------------
@@ -513,6 +576,7 @@ function renderList() {
     const meta = [job.company, job.remote ? 'Remote' : job.location, salaryText(job)]
       .filter(Boolean)
       .join(' · ');
+    const age = postedAge(job);
 
     body.append(
       h(
@@ -522,6 +586,15 @@ function renderList() {
           onclick: () => openDrawer(job.id),
         },
         h('td', {}, scoreNode(job)),
+        h(
+          'td',
+          {},
+          h('span', {
+            class: `age age--${age.band}`,
+            title: job.postedAt ? `Posted ${new Date(job.postedAt).toLocaleDateString()}` : 'No date published',
+            text: age.label,
+          })
+        ),
         h(
           'td',
           {},
@@ -964,6 +1037,21 @@ function openBoardEditor(existing) {
     h('option', { value: 'prioritize', selected: filters.companyMode !== 'limit' }, 'Prioritize these'),
     h('option', { value: 'limit', selected: filters.companyMode === 'limit' }, 'Only these companies')
   );
+
+  const maxAge = h(
+    'select',
+    { class: 'select' },
+    ...[
+      ['', 'No limit'],
+      ['7', 'A week'],
+      ['14', 'Two weeks'],
+      ['30', 'A month'],
+      ['60', 'Two months'],
+      ['90', 'Three months'],
+    ].map(([value, label]) =>
+      h('option', { value, selected: String(filters.maxAgeDays ?? '') === value }, label)
+    )
+  );
   const refreshEvery = h(
     'select',
     { class: 'select' },
@@ -1003,6 +1091,7 @@ function openBoardEditor(existing) {
           remoteOnly: remoteOnly.checked,
           seniority: seniority.value === '' ? undefined : Number(seniority.value),
           minSeniority: minSeniority.value === '' ? undefined : Number(minSeniority.value),
+          maxAgeDays: maxAge.value === '' ? undefined : Number(maxAge.value),
           companies: companies.value,
           companyMode: companyMode.value,
         },
@@ -1053,6 +1142,11 @@ function openBoardEditor(existing) {
       { class: 'row' },
       fieldRow('Minimum level', minSeniority, 'Drops anything below it. Titles that state no level are kept.'),
       fieldRow('Preferred level', seniority, 'Ranking nudge, not a filter.')
+    ),
+    fieldRow(
+      'Ignore postings older than',
+      maxAge,
+      'Recency is already the heaviest ranking signal — this drops old postings entirely. Undated ones are kept.'
     ),
     h('div', { class: 'row' }, fieldRow('Refresh', refreshEvery), fieldRow('Refresh mode', refreshMode)),
     h('label', { class: 'checkbox' }, remoteOnly, h('span', { text: 'Remote roles only' })),

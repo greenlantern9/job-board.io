@@ -537,6 +537,12 @@
   margin-left: 0.3rem;
 }
 
+.recency {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .minscore {
   display: flex;
   align-items: center;
@@ -544,6 +550,48 @@
   margin-left: auto;
   font-size: 0.75rem;
   color: var(--muted);
+}
+
+/* Posting age. Colour only ever encodes the band, and the label always carries
+   the value, so it stays readable without relying on hue. */
+.age {
+  display: inline-block;
+  padding: 0.18rem 0.5rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.age--fresh {
+  border-color: rgba(195, 245, 60, 0.4);
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.age--recent {
+  color: var(--text);
+}
+
+.age--stale {
+  color: var(--faint);
+  border-color: var(--line-soft);
+}
+
+.age--unknown {
+  color: var(--faint);
+  border-style: dashed;
+  border-color: var(--line-soft);
+}
+
+/* Kept on narrow screens: recency is the point of the column, and it is the
+   cheapest one to render. Details and status give way first. */
+.jobs__age {
+  width: 5.5rem;
 }
 
 .minscore input[type='range'] {
@@ -657,16 +705,18 @@
   width: 15rem;
 }
 
+/* Column order: score, posted, role, details, status, actions. These indices
+   have to track that order - they shifted by one when "posted" was added. */
 @media (max-width: 900px) {
   .jobs__meta-col,
-  .jobs tbody td:nth-child(3) {
+  .jobs tbody td:nth-child(4) {
     display: none;
   }
 }
 
 @media (max-width: 640px) {
   .jobs__status-col,
-  .jobs tbody td:nth-child(4) {
+  .jobs tbody td:nth-child(5) {
     display: none;
   }
 }

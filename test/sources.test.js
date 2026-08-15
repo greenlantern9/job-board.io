@@ -11,6 +11,10 @@ import {
   truncate,
   normalizeCompany,
   companyMatches,
+  fetchSource,
+  SOURCE_KINDS,
+  ATS_KINDS,
+  AGGREGATOR_KINDS,
   SourceError,
 } from '../src/sources.js';
 
@@ -175,6 +179,41 @@ test('prioritize mode excludes nobody', () => {
 test('an empty company list never filters, whatever the mode', () => {
   assert.equal(matchesFilters(job({ company: 'acme' }), { companies: '', companyMode: 'limit' }), true);
   assert.equal(matchesFilters(job({ company: 'acme' }), { companies: '  ,  ', companyMode: 'limit' }), true);
+});
+
+// --- posting age -----------------------------------------------------------
+
+const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+
+test('age ceiling drops old postings but keeps undated ones', () => {
+  assert.equal(matchesFilters(job({ postedAt: daysAgo(3) }), { maxAgeDays: 7 }), true);
+  assert.equal(matchesFilters(job({ postedAt: daysAgo(20) }), { maxAgeDays: 7 }), false);
+  // Many feeds omit the date entirely; excluding them would hide real jobs.
+  assert.equal(matchesFilters(job({ postedAt: '' }), { maxAgeDays: 7 }), true);
+  assert.equal(matchesFilters(job({ postedAt: daysAgo(200) }), {}), true);
+});
+
+// --- source coverage -------------------------------------------------------
+
+test('the connector set covers per-company boards and cross-company aggregators', () => {
+  // The aggregators are what stop a board being limited to the dozen employers
+  // discovery happened to pick.
+  for (const kind of ['greenhouse', 'lever', 'ashby', 'smartrecruiters']) {
+    assert.ok(SOURCE_KINDS.includes(kind), `${kind} should be a source kind`);
+    assert.ok(ATS_KINDS.includes(kind), `${kind} should be probed during discovery`);
+  }
+  for (const kind of AGGREGATOR_KINDS) {
+    assert.ok(SOURCE_KINDS.includes(kind), `${kind} should be a source kind`);
+    assert.ok(!ATS_KINDS.includes(kind), `${kind} is not a per-company board`);
+  }
+  assert.ok(SOURCE_KINDS.includes('rss'));
+});
+
+test('an unknown source kind is rejected rather than silently returning nothing', async () => {
+  await assert.rejects(
+    () => fetchSource({ kind: 'nonsense', identifier: 'x' }),
+    /Unknown source type/
+  );
 });
 
 // --- identifier validation -------------------------------------------------

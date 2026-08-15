@@ -44,6 +44,10 @@ function cleanFilters(input) {
   if (Number.isInteger(minSeniority) && minSeniority >= 0 && minSeniority <= 5) {
     filters.minSeniority = minSeniority;
   }
+  const maxAgeDays = Number(raw.maxAgeDays);
+  if (Number.isInteger(maxAgeDays) && maxAgeDays > 0 && maxAgeDays <= 365) {
+    filters.maxAgeDays = maxAgeDays;
+  }
   return filters;
 }
 
@@ -442,7 +446,20 @@ async function listJobs(request, env, ctx) {
     params.push(minScore);
   }
 
-  sql += ' ORDER BY score DESC, discovered_at DESC LIMIT 400';
+  // "Posted within N days". Undated postings are kept: a lot of feeds omit the
+  // field, and excluding them would silently hide real jobs rather than old
+  // ones. They sort last under "newest first" for the same reason.
+  const maxAgeDays = Number(url.searchParams.get('maxAgeDays'));
+  if (Number.isFinite(maxAgeDays) && maxAgeDays > 0) {
+    sql += " AND (posted_at = '' OR posted_at >= ?)";
+    params.push(new Date(Date.now() - maxAgeDays * 86400000).toISOString());
+  }
+
+  sql +=
+    url.searchParams.get('sort') === 'newest'
+      ? " ORDER BY (posted_at = '') ASC, posted_at DESC, score DESC LIMIT 400"
+      : ' ORDER BY score DESC, discovered_at DESC LIMIT 400';
+
   const rows = await queryAll(env, sql, ...params);
   return json({ jobs: rows.map(jobToPublic), board: boardToPublic(board) });
 }

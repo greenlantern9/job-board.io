@@ -66,6 +66,16 @@ function companyOnList(company, list) {
   });
 }
 
+/** Age in whole-ish days, or null when the posting carries no usable date. */
+export function jobAgeDays(job) {
+  if (!job || !job.postedAt) return null;
+  const posted = new Date(job.postedAt).getTime();
+  if (!Number.isFinite(posted)) return null;
+  const age = (Date.now() - posted) / 86400000;
+  if (!Number.isFinite(age) || age < 0) return null;
+  return age;
+}
+
 function words(text) {
   return String(text || '')
     .toLowerCase()
@@ -147,20 +157,37 @@ export function heuristicScore(job, { prompt = '', filters = {} } = {}) {
     }
   }
 
-  // 5. Recency (up to +12). Past ~60 days a posting is usually already filled.
-  if (job.postedAt) {
-    const ageDays = (Date.now() - new Date(job.postedAt).getTime()) / 86400000;
-    if (Number.isFinite(ageDays) && ageDays >= 0) {
-      if (ageDays <= 3) {
-        score += 12;
-        reasons.push('posted in the last few days');
-      } else if (ageDays <= 14) {
-        score += 7;
-        reasons.push('posted recently');
-      } else if (ageDays > 60) {
-        score -= 10;
-        reasons.push('posting is over two months old');
-      }
+  // 5. Recency, the heaviest single signal at up to +22.
+  //
+  //    Weighted this hard on purpose: applying early is one of the few things a
+  //    candidate actually controls, and a posting more than a couple of months
+  //    old has usually either been filled or gone stale in the pipeline. A
+  //    perfect match from March is worth less than a good match from Tuesday.
+  //
+  //    An undated posting is left alone rather than penalised - plenty of feeds
+  //    simply omit the field, and guessing would bury them.
+  const ageDays = jobAgeDays(job);
+  if (ageDays !== null) {
+    if (ageDays <= 1) {
+      score += 22;
+      reasons.unshift('posted today');
+    } else if (ageDays <= 3) {
+      score += 18;
+      reasons.unshift('posted in the last few days');
+    } else if (ageDays <= 7) {
+      score += 12;
+      reasons.push('posted this week');
+    } else if (ageDays <= 14) {
+      score += 6;
+      reasons.push('posted in the last fortnight');
+    } else if (ageDays <= 30) {
+      score -= 2;
+    } else if (ageDays <= 60) {
+      score -= 10;
+      reasons.push('over a month old');
+    } else {
+      score -= 20;
+      reasons.push('over two months old');
     }
   }
 

@@ -7,10 +7,9 @@
 // with one click is worth several you have to go research.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { fetchSource, validateSlug } from './sources.js';
+import { fetchSource, validateSlug, ATS_KINDS } from './sources.js';
 
 const MAX_CANDIDATES = 8;
-const PLATFORMS = ['greenhouse', 'lever', 'ashby'];
 
 const SUGGEST_SCHEMA = {
   type: 'object',
@@ -124,7 +123,7 @@ async function probe(candidate, selfHost) {
     if (!slug) return null;
   }
 
-  for (const kind of PLATFORMS) {
+  for (const kind of ATS_KINDS) {
     try {
       const jobs = await fetchSource({ kind, identifier: slug }, { selfHost });
       // A board that exists but lists nothing is not worth adding today.

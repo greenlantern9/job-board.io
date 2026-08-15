@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { heuristicScore, detectSeniority, detectSeniorityLevel } from '../src/rank.js';
+import { heuristicScore, detectSeniority, detectSeniorityLevel, jobAgeDays } from '../src/rank.js';
 
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
 
@@ -69,13 +69,45 @@ test('a keyword in the title beats the same keyword in the body', () => {
   assert.ok(inTitle.score > inBody.score);
 });
 
-test('recency raises fresh postings and penalises stale ones', () => {
-  const fresh = heuristicScore(base({ postedAt: daysAgo(1) }), {});
-  const recent = heuristicScore(base({ postedAt: daysAgo(10) }), {});
-  const stale = heuristicScore(base({ postedAt: daysAgo(90) }), {});
-  assert.ok(fresh.score > recent.score);
-  assert.ok(recent.score > stale.score);
-  assert.match(stale.reason, /two months old/);
+test('recency is monotonic across the whole age range', () => {
+  const ages = [0, 2, 5, 10, 20, 45, 120];
+  const scores = ages.map((d) => heuristicScore(base({ postedAt: daysAgo(d) }), {}).score);
+  for (let i = 1; i < scores.length; i++) {
+    assert.ok(
+      scores[i] <= scores[i - 1],
+      `age ${ages[i]}d scored ${scores[i]}, higher than ${ages[i - 1]}d at ${scores[i - 1]}`
+    );
+  }
+  assert.ok(scores[0] > scores[scores.length - 1] + 30, 'fresh should clear stale by a wide margin');
+});
+
+test('recency outweighs a criteria match, because applying early matters', () => {
+  // A perfect match from four months ago should lose to a decent match from
+  // today - that is the whole point of weighting recency this hard.
+  const staleMatch = heuristicScore(base({ postedAt: daysAgo(120) }), {
+    prompt: 'senior backend engineer go postgres distributed systems',
+  });
+  const freshWeaker = heuristicScore(base({ postedAt: daysAgo(0), description: 'Some other stack.' }), {
+    prompt: 'senior backend engineer go postgres distributed systems',
+  });
+  assert.ok(freshWeaker.score > staleMatch.score);
+});
+
+test('today and this-week postings say so in the reason, first', () => {
+  assert.match(heuristicScore(base({ postedAt: daysAgo(0) }), {}).reason, /^posted today/);
+  assert.match(heuristicScore(base({ postedAt: daysAgo(5) }), {}).reason, /posted this week/);
+  assert.match(heuristicScore(base({ postedAt: daysAgo(120) }), {}).reason, /two months old/);
+});
+
+test('an undated posting is neither rewarded nor punished', () => {
+  const undated = heuristicScore(base({ postedAt: '' }), {});
+  const monthOld = heuristicScore(base({ postedAt: daysAgo(20) }), {});
+  const fresh = heuristicScore(base({ postedAt: daysAgo(0) }), {});
+  assert.ok(undated.score > monthOld.score - 5 && undated.score < fresh.score);
+  assert.equal(jobAgeDays({ postedAt: '' }), null);
+  assert.equal(jobAgeDays({ postedAt: 'not-a-date' }), null);
+  // A future date is a feed bug, not a fresh posting.
+  assert.equal(jobAgeDays({ postedAt: new Date(Date.now() + 86400000).toISOString() }), null);
 });
 
 test('seniority mismatch costs more the further off it is', () => {

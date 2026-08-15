@@ -11,7 +11,21 @@ const FETCH_TIMEOUT_MS = 10000;
 const MAX_DESCRIPTION_CHARS = 4000;
 const USER_AGENT = 'job-boards.io/1.0 (+https://job-boards.io)';
 
-export const SOURCE_KINDS = ['greenhouse', 'lever', 'ashby', 'rss'];
+/** Per-company boards, then cross-company aggregators, then generic feeds. */
+export const SOURCE_KINDS = [
+  'greenhouse',
+  'lever',
+  'ashby',
+  'smartrecruiters',
+  'remotive',
+  'arbeitnow',
+  'remoteok',
+  'himalayas',
+  'rss',
+];
+
+/** Platforms discovery probes when trying to locate a named company. */
+export const ATS_KINDS = ['greenhouse', 'lever', 'ashby', 'smartrecruiters'];
 
 export class SourceError extends Error {}
 
@@ -137,10 +151,32 @@ export function parseSalary(text) {
   return { min: 0, max: 0, raw: '' };
 }
 
+/**
+ * Feeds report time as ISO strings, unix seconds, and unix milliseconds -
+ * sometimes two of the three in one payload. Guessing wrong puts a fresh job in
+ * 1970, which the recency ranking would then bury, so the magnitude is checked
+ * rather than assumed.
+ */
 function isoOrEmpty(value) {
-  if (!value) return '';
-  const date = typeof value === 'number' ? new Date(value) : new Date(String(value));
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+  if (!value && value !== 0) return '';
+
+  let date;
+  const numeric = typeof value === 'number' ? value : /^\d{9,14}$/.test(String(value).trim()) ? Number(value) : null;
+
+  if (numeric !== null && Number.isFinite(numeric)) {
+    // Seconds and milliseconds are told apart by size: anything below ~Nov 2286
+    // in ms would be before 1971 in seconds, so the boundary is unambiguous for
+    // any date a job posting could carry.
+    date = new Date(numeric < 1e11 ? numeric * 1000 : numeric);
+  } else {
+    date = new Date(String(value));
+  }
+
+  if (Number.isNaN(date.getTime())) return '';
+  // A posting dated in the future is a feed bug; treat it as undated rather
+  // than letting it sit at the top of a recency sort forever.
+  if (date.getTime() > Date.now() + 7 * 86400000) return '';
+  return date.toISOString();
 }
 
 // --- identifier validation -------------------------------------------------
@@ -310,6 +346,177 @@ async function fetchRss(feedUrl, { selfHost } = {}) {
   });
 }
 
+// --- aggregators -----------------------------------------------------------
+//
+// The ATS connectors above are per-company: useful, but a board only ever sees
+// the dozen or so employers it happens to be pointed at. These search across
+// thousands of companies in a single request, which is what stops the board
+// being a keyhole view of the market.
+//
+// Their `identifier` is a search query rather than a company slug. Most of them
+// return everything and are filtered locally; only Remotive takes a search
+// parameter server-side.
+
+/** Per-source ceiling. Aggregators can return thousands; the board filters and
+ *  ranking narrow from there, but the row count has to stay bounded. */
+const MAX_PER_AGGREGATOR = 200;
+
+function queryTerms(identifier) {
+  return String(identifier || '')
+    .split(/[,\s]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length > 1);
+}
+
+/** Local keyword narrowing for feeds with no server-side search. */
+function matchesQuery(text, terms) {
+  if (terms.length === 0) return true;
+  const haystack = text.toLowerCase();
+  return terms.some((term) => haystack.includes(term));
+}
+
+async function fetchRemotive(query) {
+  const search = encodeURIComponent(String(query || '').slice(0, 100));
+  const data = await fetchJson(
+    `https://remotive.com/api/remote-jobs?limit=${MAX_PER_AGGREGATOR}${search ? `&search=${search}` : ''}`
+  );
+  const jobs = Array.isArray(data && data.jobs) ? data.jobs : [];
+  return jobs.map((job) => {
+    const description = htmlToText(job.description);
+    const salary = parseSalary(`${job.salary || ''} ${description}`);
+    return {
+      externalId: `remotive:${job.id}`,
+      title: String(job.title || 'Untitled role').trim(),
+      company: String(job.company_name || '').trim(),
+      location: job.candidate_required_location || '',
+      remote: true, // Remotive is a remote-only board.
+      employment: job.job_type || '',
+      salaryMin: salary.min,
+      salaryMax: salary.max,
+      salaryRaw: salary.raw || job.salary || '',
+      url: job.url || '',
+      description: truncate(description),
+      postedAt: isoOrEmpty(job.publication_date),
+    };
+  });
+}
+
+async function fetchArbeitnow(query) {
+  const data = await fetchJson('https://www.arbeitnow.com/api/job-board-api');
+  const jobs = Array.isArray(data && data.data) ? data.data : [];
+  const terms = queryTerms(query);
+  const out = [];
+  for (const job of jobs) {
+    const description = htmlToText(job.description);
+    const blob = `${job.title} ${job.company_name} ${(job.tags || []).join(' ')} ${description}`;
+    if (!matchesQuery(blob, terms)) continue;
+    const salary = parseSalary(description);
+    out.push({
+      externalId: `arbeitnow:${job.slug}`,
+      title: String(job.title || 'Untitled role').trim(),
+      company: String(job.company_name || '').trim(),
+      location: job.location || '',
+      remote: Boolean(job.remote),
+      employment: (job.job_types || []).join(', '),
+      salaryMin: salary.min,
+      salaryMax: salary.max,
+      salaryRaw: salary.raw,
+      url: job.url || '',
+      description: truncate(description),
+      postedAt: isoOrEmpty(job.created_at),
+    });
+    if (out.length >= MAX_PER_AGGREGATOR) break;
+  }
+  return out;
+}
+
+async function fetchRemoteOk(query) {
+  const data = await fetchJson('https://remoteok.com/api');
+  // Index 0 is a legal/attribution notice rather than a posting.
+  const jobs = Array.isArray(data) ? data.slice(1) : [];
+  const terms = queryTerms(query);
+  const out = [];
+  for (const job of jobs) {
+    const description = htmlToText(job.description);
+    const blob = `${job.position || ''} ${job.company || ''} ${(job.tags || []).join(' ')} ${description}`;
+    if (!matchesQuery(blob, terms)) continue;
+    out.push({
+      externalId: `remoteok:${job.id || job.slug}`,
+      title: String(job.position || 'Untitled role').trim(),
+      company: String(job.company || '').trim(),
+      location: job.location || '',
+      remote: true,
+      employment: '',
+      salaryMin: Number(job.salary_min) || 0,
+      salaryMax: Number(job.salary_max) || 0,
+      salaryRaw: '',
+      url: job.url || job.apply_url || '',
+      description: truncate(description),
+      postedAt: isoOrEmpty(job.epoch || job.date),
+    });
+    if (out.length >= MAX_PER_AGGREGATOR) break;
+  }
+  return out;
+}
+
+async function fetchHimalayas(query) {
+  const data = await fetchJson(`https://himalayas.app/jobs/api?limit=${MAX_PER_AGGREGATOR}`);
+  const jobs = Array.isArray(data && (data.jobs || data.data)) ? data.jobs || data.data : [];
+  const terms = queryTerms(query);
+  const out = [];
+  for (const job of jobs) {
+    const description = htmlToText(job.description || job.excerpt);
+    const blob = `${job.title} ${job.companyName} ${(job.categories || []).join(' ')} ${description}`;
+    if (!matchesQuery(blob, terms)) continue;
+    out.push({
+      externalId: `himalayas:${job.guid || `${job.companySlug}-${job.title}`}`.slice(0, 200),
+      title: String(job.title || 'Untitled role').trim(),
+      company: String(job.companyName || '').trim(),
+      location: (job.locationRestrictions || []).join(', '),
+      remote: true,
+      employment: job.employmentType || '',
+      salaryMin: Number(job.minSalary) || 0,
+      salaryMax: Number(job.maxSalary) || 0,
+      salaryRaw: '',
+      url: job.applicationLink || '',
+      description: truncate(description),
+      postedAt: isoOrEmpty(job.pubDate),
+    });
+    if (out.length >= MAX_PER_AGGREGATOR) break;
+  }
+  return out;
+}
+
+async function fetchSmartRecruiters(slug) {
+  const board = validateSlug(slug);
+  const data = await fetchJson(
+    `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(board)}/postings?limit=100`
+  );
+  const jobs = Array.isArray(data && data.content) ? data.content : [];
+  return jobs.map((job) => {
+    const location = [job.location && job.location.city, job.location && job.location.country]
+      .filter(Boolean)
+      .join(', ');
+    return {
+      externalId: `smartrecruiters:${board}:${job.id}`,
+      title: String(job.name || 'Untitled role').trim(),
+      company: (job.company && job.company.name) || board,
+      location,
+      remote: Boolean(job.location && job.location.remote) || looksRemote(location, job.name),
+      employment: (job.typeOfEmployment && job.typeOfEmployment.label) || '',
+      salaryMin: 0,
+      salaryMax: 0,
+      salaryRaw: '',
+      url: job.ref || `https://jobs.smartrecruiters.com/${board}/${job.id}`,
+      description: '',
+      postedAt: isoOrEmpty(job.releasedDate || job.createdOn),
+    };
+  });
+}
+
+/** Kinds whose identifier is a search query, not a company. */
+export const AGGREGATOR_KINDS = ['remotive', 'arbeitnow', 'remoteok', 'himalayas'];
+
 export async function fetchSource(source, options = {}) {
   switch (source.kind) {
     case 'greenhouse':
@@ -318,6 +525,16 @@ export async function fetchSource(source, options = {}) {
       return fetchLever(source.identifier);
     case 'ashby':
       return fetchAshby(source.identifier);
+    case 'smartrecruiters':
+      return fetchSmartRecruiters(source.identifier);
+    case 'remotive':
+      return fetchRemotive(source.identifier);
+    case 'arbeitnow':
+      return fetchArbeitnow(source.identifier);
+    case 'remoteok':
+      return fetchRemoteOk(source.identifier);
+    case 'himalayas':
+      return fetchHimalayas(source.identifier);
     case 'rss':
       return fetchRss(source.identifier, options);
     default:
@@ -386,6 +603,15 @@ export function matchesFilters(job, filters = {}) {
     // Unknown salary is kept: dropping every listing that omits a range would
     // discard most of the market.
     if (best > 0 && best < minSalary) return false;
+  }
+
+  // Age ceiling at ingest. Undated postings are kept - many feeds omit the
+  // field entirely, and dropping them would discard real jobs rather than old
+  // ones.
+  const maxAgeDays = Number(filters.maxAgeDays);
+  if (Number.isFinite(maxAgeDays) && maxAgeDays > 0 && job.postedAt) {
+    const age = (Date.now() - new Date(job.postedAt).getTime()) / 86400000;
+    if (Number.isFinite(age) && age > maxAgeDays) return false;
   }
 
   // A title that states no level is kept, for the same reason. Plenty of
