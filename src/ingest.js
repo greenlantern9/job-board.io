@@ -1,7 +1,7 @@
 // Board refresh: pull every enabled source, filter, persist what is new, and
 // score it.
 
-import { fetchSource, matchesFilters, ATS_KINDS } from './sources.js';
+import { fetchSource, matchesFilters, normalizeCompany, ATS_KINDS } from './sources.js';
 import { scoreJobs } from './scoring.js';
 import { queryAll, run, nowIso, parseJson } from './db.js';
 import { newId } from './crypto.js';
@@ -56,6 +56,7 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
     sourcesFailed: 0,
     fetched: 0,
     filteredOut: 0,
+    duplicates: 0,
     added: 0,
     updated: 0,
     warnings: [],
@@ -88,6 +89,7 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
   const toInsert = [];
   const toUpdate = [];
   const seen = new Set();
+  const seenIdentities = new Set();
   // Sources that both succeeded and list their entire set of openings. Only
   // these can tell us that a job is gone by not mentioning it.
   const reapable = [];
@@ -117,6 +119,16 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
       // A job can legitimately appear in two sources; first one wins.
       if (seen.has(job.externalId)) continue;
       seen.add(job.externalId);
+
+      // The same opening genuinely appears on several aggregators, and some
+      // feeds repeat it under different ids of their own. Identity is the role
+      // at the employer, not whatever key the source happened to mint.
+      const identity = `${job.title.trim().toLowerCase().replace(/\s+/g, ' ')}|${normalizeCompany(job.company)}`;
+      if (seenIdentities.has(identity)) {
+        summary.duplicates++;
+        continue;
+      }
+      seenIdentities.add(identity);
 
       if (isTooOld(job) || !matchesFilters(job, board.filters)) {
         summary.filteredOut++;

@@ -21,6 +21,7 @@ export const SOURCE_KINDS = [
   'arbeitnow',
   'remoteok',
   'himalayas',
+  'themuse',
   'rss',
 ];
 
@@ -428,6 +429,22 @@ function compileTerms(terms) {
 const termHits = (matcher, text) => matcher.res.every((re) => re.test(text));
 
 /**
+ * Looser test for sources that have already narrowed things server-side.
+ *
+ * The Muse has no free-text search but does filter by category and level, so a
+ * page of results is already "senior project management" rather than the whole
+ * index. Applying the full corroboration rule on top of that filters twice and
+ * returns nothing - a Project Quality Manager is a real hit for someone hunting
+ * a technical program manager, even though two of the three words are absent.
+ * Here a single word of the query in the title is enough.
+ */
+export function matchesAnyWord(title, matchers) {
+  if (!matchers || matchers.length === 0) return false;
+  const titleText = String(title || '');
+  return matchers.some((m) => m.res.some((re) => re.test(titleText)));
+}
+
+/**
  * Local narrowing for aggregator feeds, which have no server-side search worth
  * the name.
  *
@@ -598,6 +615,102 @@ async function fetchHimalayas(query) {
   return out;
 }
 
+/**
+ * The Muse. No API key, and a large index - but no free-text search either, so
+ * the narrowing has to happen through its own taxonomy.
+ *
+ * Mapping the query onto categories and a level turns "pull 100 random jobs out
+ * of 400,000 and hope" into "pull 100 senior project-management jobs", which is
+ * the difference between this source being useful and being noise.
+ */
+const MUSE_CATEGORIES = [
+  [/\b(software|backend|back-end|frontend|front-end|fullstack|full-stack|developer|engineer|golang|rust|python|java|typescript|node)\b/, 'Software Engineering'],
+  [/\b(program|project|delivery|tpm|pmo|scrum)\b/, 'Project Management'],
+  [/\b(product)\b/, 'Product Management'],
+  [/\b(data|analytics|analyst|machine learning|ml|scientist)\b/, 'Data Science'],
+  [/\b(devops|sre|infrastructure|platform|cloud|security|network|systems)\b/, 'IT'],
+  [/\b(design|designer|ux|ui)\b/, 'Design'],
+  [/\b(sales|account executive|business development)\b/, 'Sales'],
+  [/\b(marketing|growth|seo|content)\b/, 'Marketing'],
+  [/\b(operations|ops|supply)\b/, 'Business Operations'],
+  [/\b(finance|accounting|controller)\b/, 'Accounting'],
+];
+
+const MUSE_LEVELS = [
+  [/\b(director|vp|vice president|head of|chief|executive)\b/, 'Management'],
+  [/\b(senior|staff|principal|lead|sr)\b/, 'Senior Level'],
+  [/\b(junior|entry|graduate|new grad|intern)\b/, 'Entry Level'],
+];
+
+/** How many 20-job pages to walk. Four is enough to fill a board without
+ *  hammering an endpoint we are using unauthenticated. */
+const MUSE_PAGES = 4;
+
+async function fetchTheMuse(query) {
+  const text = String(query || '').toLowerCase();
+
+  const categories = MUSE_CATEGORIES.filter(([re]) => re.test(text)).map(([, name]) => name);
+  const level = (MUSE_LEVELS.find(([re]) => re.test(text)) || [])[1];
+
+  const matchers = compileTerms(queryTerms(query));
+  const out = [];
+
+  for (let page = 1; page <= MUSE_PAGES; page++) {
+    const params = new URLSearchParams({ page: String(page) });
+    // Repeated keys are how The Muse expresses OR across categories.
+    for (const category of categories.slice(0, 3)) params.append('category', category);
+    if (level) params.append('level', level);
+
+    let data;
+    try {
+      data = await fetchJson(`https://www.themuse.com/api/public/jobs?${params.toString()}`);
+    } catch (err) {
+      // A later page failing should not discard the pages that worked.
+      if (page === 1) throw err;
+      break;
+    }
+
+    const jobs = Array.isArray(data && data.results) ? data.results : [];
+    if (jobs.length === 0) break;
+
+    for (const job of jobs) {
+      const description = htmlToText(job.contents);
+      const location = (job.locations || []).map((l) => l.name).join(', ');
+      const body = `${(job.company && job.company.name) || ''} ${(job.categories || [])
+        .map((c) => c.name)
+        .join(' ')} ${description}`;
+
+      // When the taxonomy filter did the narrowing, one query word in the title
+      // is enough. When it did not, fall back to the full rule.
+      const kept = categories.length
+        ? matchesAnyWord(job.name, matchers)
+        : matchesQuery(job.name, body, matchers);
+      if (!kept) continue;
+
+      const salary = parseSalary(description);
+      out.push({
+        externalId: `themuse:${job.id}`,
+        title: String(job.name || 'Untitled role').trim(),
+        company: (job.company && job.company.name) || '',
+        location,
+        remote: looksRemote(location, job.name),
+        employment: (job.levels || []).map((l) => l.name).join(', '),
+        salaryMin: salary.min,
+        salaryMax: salary.max,
+        salaryRaw: salary.raw,
+        url: (job.refs && job.refs.landing_page) || '',
+        description: truncate(description),
+        postedAt: isoOrEmpty(job.publication_date),
+      });
+      if (out.length >= MAX_PER_AGGREGATOR) return out;
+    }
+
+    if (data.page_count && page >= data.page_count) break;
+  }
+
+  return out;
+}
+
 async function fetchSmartRecruiters(slug) {
   const board = validateSlug(slug);
   const data = await fetchJson(
@@ -626,7 +739,7 @@ async function fetchSmartRecruiters(slug) {
 }
 
 /** Kinds whose identifier is a search query, not a company. */
-export const AGGREGATOR_KINDS = ['remotive', 'arbeitnow', 'remoteok', 'himalayas'];
+export const AGGREGATOR_KINDS = ['themuse', 'remotive', 'arbeitnow', 'remoteok', 'himalayas'];
 
 /** Exposed so the matching rules can be tested without hitting a live feed. */
 export function _compileQuery(identifier) {
@@ -651,6 +764,8 @@ export async function fetchSource(source, options = {}) {
       return fetchRemoteOk(source.identifier);
     case 'himalayas':
       return fetchHimalayas(source.identifier);
+    case 'themuse':
+      return fetchTheMuse(source.identifier);
     case 'rss':
       return fetchRss(source.identifier, options);
     default:

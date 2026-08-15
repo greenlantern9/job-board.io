@@ -28,6 +28,7 @@ const EMPTY_STREAK_LIMIT = 4;
 export const RECURATE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 const AGGREGATOR_LABELS = {
+  themuse: 'The Muse (all companies, all locations)',
   remotive: 'Remotive (remote roles, all companies)',
   arbeitnow: 'Arbeitnow (all companies)',
   remoteok: 'RemoteOK (remote roles, all companies)',
