@@ -608,7 +608,14 @@ function renderList() {
         h(
           'td',
           {},
-          h('span', { class: 'job__title', text: job.title }),
+          h(
+            'span',
+            { class: 'job__title' },
+            job.title,
+            // Kept visible rather than hidden: the user applied to this, and
+            // knowing the listing is gone is the useful part.
+            job.closedAt ? h('span', { class: 'tag tag--closed', text: 'no longer listed' }) : null
+          ),
           job.scoreReason ? h('span', { class: 'job__why', text: job.scoreReason }) : null
         ),
         h('td', { class: 'job__meta' }, meta || '—'),
@@ -895,6 +902,9 @@ function openDrawer(id) {
       job.employment ? h('span', { class: 'tag', text: job.employment }) : null,
       job.postedAt ? h('span', { class: 'tag', text: `posted ${relativeTime(job.postedAt)}` }) : null,
       h('span', { class: 'tag', text: `found ${relativeTime(job.discoveredAt)}` }),
+      job.closedAt
+        ? h('span', { class: 'tag tag--closed', text: `delisted ${relativeTime(job.closedAt)}` })
+        : null,
       job.appliedAt ? h('span', { class: 'tag', text: `applied ${relativeTime(job.appliedAt)}` }) : null
     ),
 

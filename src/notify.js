@@ -57,9 +57,12 @@ function keywordMatch(job, keywords) {
  *  announced, and still in an un-acted-on state. */
 async function candidateJobs(env, rule, { since }) {
   const params = [rule.user_id, rule.min_score];
+  // closed_at is checked explicitly rather than relying on closed jobs having
+  // been archived: emailing someone about a listing that no longer exists is
+  // the worst possible moment to be wrong about it.
   let sql = `SELECT * FROM jobs
              WHERE user_id = ? AND score >= ? AND scored_at <> ''
-               AND notified_at = '' AND status IN ('new', 'saved')`;
+               AND notified_at = '' AND closed_at = '' AND status IN ('new', 'saved')`;
   if (rule.board_id) {
     sql += ' AND board_id = ?';
     params.push(rule.board_id);

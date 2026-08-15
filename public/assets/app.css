@@ -944,6 +944,16 @@
   color: var(--muted);
 }
 
+/* The employer has pulled the listing. Only ever appears on jobs the user
+   already acted on - everything else is archived out of view. */
+.tag--closed {
+  margin-left: 0.5rem;
+  border-color: rgba(242, 109, 97, 0.4);
+  background: rgba(242, 109, 97, 0.1);
+  color: var(--danger);
+  white-space: nowrap;
+}
+
 .drawer__why {
   padding: 0.85rem 1rem;
   border-radius: var(--r-md);

@@ -12,6 +12,8 @@ import {
   normalizeCompany,
   companyMatches,
   fetchSource,
+  matchesQuery,
+  _compileQuery,
   SOURCE_KINDS,
   ATS_KINDS,
   AGGREGATOR_KINDS,
@@ -214,6 +216,92 @@ test('an unknown source kind is rejected rather than silently returning nothing'
     () => fetchSource({ kind: 'nonsense', identifier: 'x' }),
     /Unknown source type/
   );
+});
+
+// --- aggregator query matching ---------------------------------------------
+// These pin the rules that stopped a search for a technical program manager
+// returning shop assistants.
+
+const q = (query) => _compileQuery(query);
+const hits = (query, title, body = '') => matchesQuery(title, body, q(query));
+
+test('a single query word must appear as a word, not a substring', () => {
+  // "go" inside "category"/"Chicago" is what made short terms match everything.
+  assert.equal(hits('go', 'Go Engineer'), true);
+  assert.equal(hits('go', 'Category Manager'), false);
+  assert.equal(hits('go', 'Chicago Sales Lead'), false);
+});
+
+test('a multi-word term needs all its words, in any order', () => {
+  assert.equal(hits('technical program manager', 'Technical Program Manager'), true);
+  // Adjacency is not required - this is plainly the same role.
+  assert.equal(hits('technical program manager', 'Program Manager, Technical Infrastructure'), true);
+  // One word of three is not a match.
+  assert.equal(hits('technical program manager', 'Store Manager'), false);
+  assert.equal(hits('technical program manager', 'Senior Product Manager'), false);
+});
+
+test('one word out of several is never enough on its own', () => {
+  assert.equal(hits('senior, backend, engineer, golang', 'Senior Account Executive'), false);
+  assert.equal(hits('senior, backend, engineer, golang', 'Store Manager'), false);
+  assert.equal(hits('senior, backend, engineer, golang', 'Senior Backend Engineer'), true);
+});
+
+test('a single-term query still matches on the title alone', () => {
+  assert.equal(hits('engineer', 'Security Engineer'), true);
+  assert.equal(hits('engineer', 'Store Manager'), false);
+});
+
+test('body text alone cannot carry a single-term query', () => {
+  // Otherwise every posting whose description happens to say the words wins.
+  assert.equal(
+    hits('technical program manager', 'Commercial Account Executive', 'our technical program manager will...'),
+    false
+  );
+});
+
+test('body text needs several corroborating signals to carry a query', () => {
+  // Deliberately strict. A description mentions all sorts of things in passing,
+  // so a generic title plus body hits has to clear a higher bar than a title
+  // match: two distinct terms AND a combined weight of three.
+  const body = (text) => hits('backend, golang, kubernetes', 'Software Engineer', text);
+  assert.equal(body('Golang and Kubernetes on our backend services.'), true, 'three signals');
+  assert.equal(body('You will write Golang against Kubernetes.'), false, 'two is not enough');
+  assert.equal(body('You will write Golang.'), false, 'one is certainly not');
+
+  // A multi-word term is worth more, so it needs only one word alongside it.
+  assert.equal(
+    hits('senior backend engineer, kubernetes', 'Software Engineer', 'A senior backend engineer working on Kubernetes.'),
+    true
+  );
+});
+
+test('undiscriminating words are dropped, but not inside a phrase', () => {
+  // "remote" matches every posting on a remote-only board.
+  assert.equal(q('remote').length, 0);
+  assert.equal(q('remote support lead').length, 1);
+  assert.equal(q('remote, backend').length, 1);
+});
+
+test('an empty query matches nothing rather than everything', () => {
+  assert.equal(matchesQuery('Anything At All', 'body', []), false);
+  assert.equal(hits('', 'Anything At All'), false);
+});
+
+test('terms with punctuation survive escaping', () => {
+  assert.equal(hits('c++', 'C++ Engineer'), true);
+  assert.equal(hits('.net', '.NET Developer'), true);
+  assert.equal(hits('c++', 'Java Engineer'), false);
+});
+
+// --- platform limits -------------------------------------------------------
+
+test('IN-clause chunks stay inside D1 bound-parameter cap', async () => {
+  // D1 rejects more than 100 bound parameters per statement at runtime, not at
+  // build time - a chunk of exactly 100 plus one board id is what broke this.
+  const { D1_MAX_BOUND_PARAMS, IN_CHUNK } = await import('../src/ingest.js');
+  assert.equal(D1_MAX_BOUND_PARAMS, 100);
+  assert.ok(IN_CHUNK < D1_MAX_BOUND_PARAMS, 'chunk must leave room for other bindings');
 });
 
 // --- refresh cadence -------------------------------------------------------

@@ -115,6 +115,7 @@ function jobToPublic(row) {
     position: row.position,
     notes: row.notes,
     appliedAt: row.applied_at,
+    closedAt: row.closed_at || '',
     updatedAt: row.updated_at,
   };
 }
@@ -463,6 +464,13 @@ async function listJobs(request, env, ctx) {
     params.push(status);
   } else if (!url.searchParams.get('includeArchived')) {
     sql += " AND status <> 'archived'";
+  }
+
+  // Jobs the employer has stopped listing are hidden unless asked for. The ones
+  // the user applied to are kept visible and flagged, since that is their own
+  // record of having applied rather than a listing.
+  if (!url.searchParams.get('includeClosed')) {
+    sql += " AND (closed_at = '' OR status NOT IN ('new', 'saved'))";
   }
 
   const q = String(url.searchParams.get('q') || '').trim().slice(0, 100);

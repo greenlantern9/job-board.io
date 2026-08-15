@@ -1,13 +1,28 @@
 // Board refresh: pull every enabled source, filter, persist what is new, and
 // score it.
 
-import { fetchSource, matchesFilters } from './sources.js';
+import { fetchSource, matchesFilters, ATS_KINDS } from './sources.js';
 import { scoreJobs } from './scoring.js';
 import { queryAll, run, nowIso, parseJson } from './db.js';
 import { newId } from './crypto.js';
 
 /** Jobs older than this are dropped at ingest - they are almost always filled. */
-const MAX_AGE_DAYS = 120;
+const MAX_AGE_DAYS = 60;
+
+/**
+ * Consecutive refreshes a job may be absent from its company board before we
+ * call it gone. Two rather than one: feeds hiccup, and briefly hiding a live
+ * job is worse than briefly showing a filled one.
+ */
+const MISSING_STREAK_LIMIT = 2;
+
+/**
+ * D1 allows at most 100 bound parameters in a single statement, and exceeding
+ * it fails at runtime with "too many SQL variables" rather than at build time.
+ * The chunk leaves headroom for the other bindings on the same query.
+ */
+export const D1_MAX_BOUND_PARAMS = 100;
+export const IN_CHUNK = 90;
 
 /** One scheduled refresh a day. See clampRefreshInterval in routes/app.js. */
 export const MIN_REFRESH_MINUTES = 1440;
@@ -73,12 +88,16 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
   const toInsert = [];
   const toUpdate = [];
   const seen = new Set();
+  // Sources that both succeeded and list their entire set of openings. Only
+  // these can tell us that a job is gone by not mentioning it.
+  const reapable = [];
 
   for (const source of sources) {
     let jobs;
     try {
       jobs = await fetchSource(source, { selfHost });
       summary.sourcesRun++;
+      if (ATS_KINDS.includes(source.kind)) reapable.push(source);
     } catch (err) {
       summary.sourcesFailed++;
       summary.warnings.push(`${source.label || source.identifier}: ${err.message}`);
@@ -194,6 +213,8 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
     summary.added = toInsert.length;
   }
 
+  Object.assign(summary, await reapClosedJobs(env, board, { reapable, seen, now }));
+
   const scoring = await scoreUnscored(env, board);
   summary.warnings.push(...scoring.warnings);
   summary.scored = scoring.scored;
@@ -208,6 +229,69 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
   );
 
   return summary;
+}
+
+/**
+ * Retire jobs their employer has stopped listing.
+ *
+ * A company board returns *every* opening it has, so a job that was there last
+ * time and is not there now has been filled or pulled. That inference only
+ * holds for the per-company connectors: aggregators return a rolling window of
+ * recent postings, so a job falling out of one means nothing at all and reaping
+ * on their say-so would delete half the board.
+ *
+ * Done by presumption and rebuttal rather than a giant NOT IN: bump every job
+ * belonging to a source that just ran, then clear the ones actually seen. That
+ * also means a job which still exists but no longer passes the board's filters
+ * keeps its streak reset, instead of being mistaken for a closed one.
+ */
+async function reapClosedJobs(env, board, { reapable, seen, now }) {
+  const result = { closed: 0, reopened: 0 };
+  if (reapable.length === 0) return result;
+
+  await env.DB.batch(
+    reapable.map((source) =>
+      env.DB.prepare(
+        'UPDATE jobs SET missing_streak = missing_streak + 1 WHERE board_id = ? AND source_id = ?'
+      ).bind(board.id, source.id)
+    )
+  );
+
+  // Chunked so the bound-parameter list stays within D1's limits.
+  const seenIds = [...seen];
+  for (let i = 0; i < seenIds.length; i += IN_CHUNK) {
+    const chunk = seenIds.slice(i, i + IN_CHUNK);
+    await env.DB.prepare(
+      `UPDATE jobs SET missing_streak = 0, closed_at = ''
+       WHERE board_id = ? AND external_id IN (${chunk.map(() => '?').join(',')})`
+    )
+      .bind(board.id, ...chunk)
+      .run();
+  }
+
+  const closed = await run(
+    env,
+    `UPDATE jobs SET closed_at = ?, updated_at = ?
+     WHERE board_id = ? AND closed_at = '' AND missing_streak >= ?`,
+    now,
+    now,
+    board.id,
+    MISSING_STREAK_LIMIT
+  );
+  result.closed = (closed.meta && closed.meta.changes) || 0;
+
+  // Archive the ones nobody acted on. A job the user applied to keeps its
+  // status - that record is theirs, not the source's - and is flagged in the
+  // UI as no longer listed instead.
+  await run(
+    env,
+    `UPDATE jobs SET status = 'archived', updated_at = ?
+     WHERE board_id = ? AND closed_at <> '' AND status IN ('new', 'saved')`,
+    now,
+    board.id
+  );
+
+  return result;
 }
 
 /**

@@ -98,6 +98,8 @@ const STATEMENTS = [
     notes TEXT NOT NULL DEFAULT '',
     applied_at TEXT NOT NULL DEFAULT '',
     notified_at TEXT NOT NULL DEFAULT '',
+    missing_streak INTEGER NOT NULL DEFAULT 0,
+    closed_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL,
     UNIQUE (board_id, external_id)
   )`,
@@ -157,6 +159,10 @@ const MIGRATIONS = [
   // still carry hourly. Idempotent, so re-running it on every cold isolate is
   // harmless.
   `UPDATE boards SET refresh_every = 1440 WHERE refresh_every < 1440`,
+  // Consecutive refreshes in which a company board stopped listing this job.
+  `ALTER TABLE jobs ADD COLUMN missing_streak INTEGER NOT NULL DEFAULT 0`,
+  // Set when a job has been absent long enough to call it filled or pulled.
+  `ALTER TABLE jobs ADD COLUMN closed_at TEXT NOT NULL DEFAULT ''`,
 ];
 
 // Per-isolate latch. A cold isolate pays one batch; every later request skips

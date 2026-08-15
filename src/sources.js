@@ -361,18 +361,123 @@ async function fetchRss(feedUrl, { selfHost } = {}) {
  *  ranking narrow from there, but the row count has to stay bounded. */
 const MAX_PER_AGGREGATOR = 200;
 
+/**
+ * Words too common on these boards to tell anything apart. "remote" matches
+ * every posting on a remote-only aggregator; the rest appear in the boilerplate
+ * of essentially every listing regardless of discipline.
+ */
+const UNDISCRIMINATING = new Set([
+  'remote', 'hybrid', 'onsite', 'office', 'full', 'part', 'time', 'contract',
+  'permanent', 'salary', 'benefits', 'company', 'role', 'roles', 'job', 'jobs',
+  'position', 'work', 'working', 'team', 'teams', 'years', 'experience', 'new',
+  'good', 'great', 'strong', 'want', 'looking', 'least', 'more', 'not',
+]);
+
+/**
+ * Split on commas only, so a multi-word entry stays one phrase.
+ *
+ * Splitting "technical program manager" into three loose words is why a search
+ * for it returned shop managers: any one of the words was enough. Kept whole,
+ * it matches the role someone actually named.
+ */
 function queryTerms(identifier) {
-  return String(identifier || '')
-    .split(/[,\s]+/)
-    .map((t) => t.trim().toLowerCase())
-    .filter((t) => t.length > 1);
+  const chunks = String(identifier || '')
+    .split(',')
+    .map((t) => t.trim().toLowerCase().replace(/\s+/g, ' '))
+    .filter(Boolean)
+    // A single undiscriminating word is dropped; a phrase containing one is not,
+    // because "remote" is noise alone but meaningful in "remote support lead".
+    .filter((t) => t.length > 1 && !(!t.includes(' ') && UNDISCRIMINATING.has(t)));
+  return [...new Set(chunks)];
 }
 
-/** Local keyword narrowing for feeds with no server-side search. */
-function matchesQuery(text, terms) {
-  if (terms.length === 0) return true;
-  const haystack = text.toLowerCase();
-  return terms.some((term) => haystack.includes(term));
+/**
+ * Word-boundary matcher.
+ *
+ * Substring matching is the reason an aggregator query for "go" returned shop
+ * assistants: "go" is inside "category", "going", "Chicago" and a hundred other
+ * words, so a two-letter language name matched most of the internet. Boundaries
+ * are anchored only where the term actually starts or ends with a word
+ * character, so "c++", "c#" and ".net" still match.
+ */
+function wordMatcher(word) {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const left = /^\w/.test(word) ? '\\b' : '';
+  const right = /\w$/.test(word) ? '\\b' : '';
+  return new RegExp(`${left}${escaped}${right}`, 'i');
+}
+
+/**
+ * A term is matched when every word in it appears, in any order.
+ *
+ * Requiring adjacency was too brittle - "Program Manager, Technical
+ * Infrastructure" is plainly the role someone meant by "technical program
+ * manager", but the words are not consecutive. Requiring all of them, anywhere,
+ * keeps that while still rejecting "Store Manager".
+ *
+ * Weight reflects how much a hit tells us: matching a multi-word term is strong
+ * evidence on its own, matching the bare word "manager" is not.
+ */
+function compileTerms(terms) {
+  return terms.map((term) => {
+    const words = term.split(' ').filter(Boolean);
+    return { res: words.map(wordMatcher), weight: words.length > 1 ? 2 : 1 };
+  });
+}
+
+const termHits = (matcher, text) => matcher.res.every((re) => re.test(text));
+
+/**
+ * Local narrowing for aggregator feeds, which have no server-side search worth
+ * the name.
+ *
+ * "Any term appears anywhere" is far too loose in practice: an aggregator
+ * returns every discipline, and a word like "engineer" or "senior" shows up in
+ * the boilerplate of postings that have nothing to do with the search. So a
+ * posting has to earn its place either by naming something you asked for in the
+ * *title*, or by hitting at least two distinct terms in the body.
+ *
+ * Single-term searches stay permissive - there is no second term to corroborate
+ * with, and being strict there would return almost nothing.
+ */
+/**
+ * Corroboration, not any-hit.
+ *
+ * One matching word out of several is what let "Store Manager" through a search
+ * for a technical program manager. A title now has to hit two of the terms
+ * (or the single term, when only one was given), and the weaker body-only path
+ * needs three.
+ */
+export function matchesQuery(title, body, matchers) {
+  if (!matchers || matchers.length === 0) return false; // no criteria, no basis to include
+
+  // Never demand more corroboration than the query can supply, or a one-word
+  // search would match nothing at all.
+  const available = matchers.reduce((sum, m) => sum + m.weight, 0);
+  const titleNeeded = Math.min(2, available);
+
+  const titleText = String(title || '');
+  let titleScore = 0;
+  for (const matcher of matchers) {
+    if (termHits(matcher, titleText)) titleScore += matcher.weight;
+    if (titleScore >= titleNeeded) return true;
+  }
+
+  // Body-only evidence is weak - a description mentions all sorts of things -
+  // so it needs two *distinct* terms as well as the higher score. That makes
+  // the path unsatisfiable for a single-term query on purpose: if someone names
+  // one specific role, the title is where it has to appear.
+  const haystack = `${titleText} ${String(body || '')}`;
+  let score = 0;
+  let distinct = 0;
+  for (const matcher of matchers) {
+    if (termHits(matcher, haystack)) {
+      score += matcher.weight;
+      distinct++;
+    }
+    if (distinct >= 2 && score >= 3) return true;
+  }
+  return false;
 }
 
 async function fetchRemotive(query) {
@@ -404,12 +509,14 @@ async function fetchRemotive(query) {
 async function fetchArbeitnow(query) {
   const data = await fetchJson('https://www.arbeitnow.com/api/job-board-api');
   const jobs = Array.isArray(data && data.data) ? data.data : [];
-  const terms = queryTerms(query);
+  // Compiled once per fetch rather than per posting. The regexes carry no /g
+  // flag, so they hold no lastIndex state between calls.
+  const matchers = compileTerms(queryTerms(query));
   const out = [];
   for (const job of jobs) {
     const description = htmlToText(job.description);
-    const blob = `${job.title} ${job.company_name} ${(job.tags || []).join(' ')} ${description}`;
-    if (!matchesQuery(blob, terms)) continue;
+    const body = `${job.company_name} ${(job.tags || []).join(' ')} ${description}`;
+    if (!matchesQuery(job.title, body, matchers)) continue;
     const salary = parseSalary(description);
     out.push({
       externalId: `arbeitnow:${job.slug}`,
@@ -434,12 +541,14 @@ async function fetchRemoteOk(query) {
   const data = await fetchJson('https://remoteok.com/api');
   // Index 0 is a legal/attribution notice rather than a posting.
   const jobs = Array.isArray(data) ? data.slice(1) : [];
-  const terms = queryTerms(query);
+  // Compiled once per fetch rather than per posting. The regexes carry no /g
+  // flag, so they hold no lastIndex state between calls.
+  const matchers = compileTerms(queryTerms(query));
   const out = [];
   for (const job of jobs) {
     const description = htmlToText(job.description);
-    const blob = `${job.position || ''} ${job.company || ''} ${(job.tags || []).join(' ')} ${description}`;
-    if (!matchesQuery(blob, terms)) continue;
+    const body = `${job.company || ''} ${(job.tags || []).join(' ')} ${description}`;
+    if (!matchesQuery(job.position, body, matchers)) continue;
     out.push({
       externalId: `remoteok:${job.id || job.slug}`,
       title: String(job.position || 'Untitled role').trim(),
@@ -462,12 +571,14 @@ async function fetchRemoteOk(query) {
 async function fetchHimalayas(query) {
   const data = await fetchJson(`https://himalayas.app/jobs/api?limit=${MAX_PER_AGGREGATOR}`);
   const jobs = Array.isArray(data && (data.jobs || data.data)) ? data.jobs || data.data : [];
-  const terms = queryTerms(query);
+  // Compiled once per fetch rather than per posting. The regexes carry no /g
+  // flag, so they hold no lastIndex state between calls.
+  const matchers = compileTerms(queryTerms(query));
   const out = [];
   for (const job of jobs) {
     const description = htmlToText(job.description || job.excerpt);
-    const blob = `${job.title} ${job.companyName} ${(job.categories || []).join(' ')} ${description}`;
-    if (!matchesQuery(blob, terms)) continue;
+    const body = `${job.companyName} ${(job.categories || []).join(' ')} ${description}`;
+    if (!matchesQuery(job.title, body, matchers)) continue;
     out.push({
       externalId: `himalayas:${job.guid || `${job.companySlug}-${job.title}`}`.slice(0, 200),
       title: String(job.title || 'Untitled role').trim(),
@@ -516,6 +627,11 @@ async function fetchSmartRecruiters(slug) {
 
 /** Kinds whose identifier is a search query, not a company. */
 export const AGGREGATOR_KINDS = ['remotive', 'arbeitnow', 'remoteok', 'himalayas'];
+
+/** Exposed so the matching rules can be tested without hitting a live feed. */
+export function _compileQuery(identifier) {
+  return compileTerms(queryTerms(identifier));
+}
 
 export async function fetchSource(source, options = {}) {
   switch (source.kind) {

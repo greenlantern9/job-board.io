@@ -120,6 +120,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   notes          TEXT NOT NULL DEFAULT '',
   applied_at     TEXT NOT NULL DEFAULT '',
   notified_at    TEXT NOT NULL DEFAULT '',
+  missing_streak INTEGER NOT NULL DEFAULT 0,  -- refreshes since the board last listed it
+  closed_at      TEXT NOT NULL DEFAULT '',    -- set once it is presumed filled or pulled
   updated_at     TEXT NOT NULL,
   UNIQUE (board_id, external_id),
   FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
