@@ -137,6 +137,24 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC)`,
 ];
 
+/**
+ * Columns added after a table first shipped.
+ *
+ * CREATE TABLE IF NOT EXISTS is a no-op once the table exists, so new columns
+ * need ALTER. SQLite has no ADD COLUMN IF NOT EXISTS, and D1 aborts a whole
+ * batch on one failure - so these run individually and a "duplicate column"
+ * error is the expected outcome on every deploy after the first.
+ */
+const MIGRATIONS = [
+  // Sources the system chose, versus ones the user added by hand. Curation only
+  // ever prunes its own picks.
+  `ALTER TABLE sources ADD COLUMN auto INTEGER NOT NULL DEFAULT 0`,
+  // Consecutive refreshes that produced nothing, used to retire dead boards.
+  `ALTER TABLE sources ADD COLUMN empty_streak INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE boards ADD COLUMN last_curated TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE boards ADD COLUMN curate_note TEXT NOT NULL DEFAULT ''`,
+];
+
 // Per-isolate latch. A cold isolate pays one batch; every later request skips
 // straight through.
 let schemaReady = false;
@@ -144,6 +162,20 @@ let schemaReady = false;
 export async function ensureSchema(env) {
   if (schemaReady) return;
   await env.DB.batch(STATEMENTS.map((sql) => env.DB.prepare(sql)));
+
+  for (const sql of MIGRATIONS) {
+    try {
+      await env.DB.prepare(sql).run();
+    } catch (err) {
+      // Already applied. Anything else is worth seeing in the logs, but must
+      // not take down every request on the isolate.
+      const message = String(err && err.message);
+      if (!/duplicate column/i.test(message)) {
+        console.error('migration failed', sql, message);
+      }
+    }
+  }
+
   schemaReady = true;
 }
 

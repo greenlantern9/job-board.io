@@ -9,6 +9,8 @@ import {
   validateSlug,
   validateFeedUrl,
   truncate,
+  normalizeCompany,
+  companyMatches,
   SourceError,
 } from '../src/sources.js';
 
@@ -122,6 +124,57 @@ test('a salary floor keeps jobs that publish no range', () => {
 test('an empty filter set matches everything', () => {
   assert.equal(matchesFilters(job(), {}), true);
   assert.equal(matchesFilters(job({ remote: false, location: '' }), {}), true);
+});
+
+// --- minimum seniority -----------------------------------------------------
+
+test('minimum level drops titles that state a lower one', () => {
+  assert.equal(matchesFilters(job({ title: 'Junior Backend Engineer' }), { minSeniority: 3 }), false);
+  assert.equal(matchesFilters(job({ title: 'Backend Engineering Intern' }), { minSeniority: 3 }), false);
+  assert.equal(matchesFilters(job({ title: 'Senior Backend Engineer' }), { minSeniority: 3 }), true);
+  assert.equal(matchesFilters(job({ title: 'Staff Backend Engineer' }), { minSeniority: 3 }), true);
+  assert.equal(matchesFilters(job({ title: 'Principal Engineer' }), { minSeniority: 3 }), true);
+});
+
+test('a title stating no level survives the minimum', () => {
+  // The important case: plenty of senior roles are titled just this, and
+  // dropping them would gut the board.
+  assert.equal(matchesFilters(job({ title: 'Software Engineer' }), { minSeniority: 3 }), true);
+  assert.equal(matchesFilters(job({ title: 'Backend Engineer' }), { minSeniority: 5 }), true);
+});
+
+test('a minimum of zero excludes nothing', () => {
+  assert.equal(matchesFilters(job({ title: 'Engineering Intern' }), { minSeniority: 0 }), true);
+});
+
+// --- curated companies -----------------------------------------------------
+
+test('company names match across slug, display name, and legal suffix', () => {
+  assert.equal(normalizeCompany('Acme Corp, Inc.'), 'acme');
+  assert.equal(companyMatches('gitlab', ['GitLab']), true);
+  assert.equal(companyMatches('GitLab Inc.', ['gitlab']), true);
+  assert.equal(companyMatches('stripe', ['Stripe Payments']), true);
+  assert.equal(companyMatches('1Password', ['1password']), true);
+  assert.equal(companyMatches('shopify', ['Stripe', 'Linear']), false);
+  assert.equal(companyMatches('', ['Stripe']), false);
+});
+
+test('limit mode makes the company list an allowlist', () => {
+  const filters = { companies: 'Stripe, Linear', companyMode: 'limit' };
+  assert.equal(matchesFilters(job({ company: 'stripe' }), filters), true);
+  assert.equal(matchesFilters(job({ company: 'linear' }), filters), true);
+  assert.equal(matchesFilters(job({ company: 'acme' }), filters), false);
+});
+
+test('prioritize mode excludes nobody', () => {
+  const filters = { companies: 'Stripe, Linear', companyMode: 'prioritize' };
+  assert.equal(matchesFilters(job({ company: 'acme' }), filters), true);
+  assert.equal(matchesFilters(job({ company: 'stripe' }), filters), true);
+});
+
+test('an empty company list never filters, whatever the mode', () => {
+  assert.equal(matchesFilters(job({ company: 'acme' }), { companies: '', companyMode: 'limit' }), true);
+  assert.equal(matchesFilters(job({ company: 'acme' }), { companies: '  ,  ', companyMode: 'limit' }), true);
 });
 
 // --- identifier validation -------------------------------------------------

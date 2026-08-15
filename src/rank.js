@@ -12,10 +12,58 @@ const SENIORITY = [
   { re: /\b(senior|sr\.?|lead|staff)\b/i, level: 3 },
 ];
 
-/** 0 intern, 1 junior, 2 mid (default), 3 senior/staff, 4 principal, 5 exec. */
-export function detectSeniority(title) {
+/** Human labels for the six levels, shared by the UI and the model prompt. */
+export const SENIORITY_LABELS = [
+  'Internship',
+  'Junior',
+  'Mid',
+  'Senior / Staff',
+  'Principal',
+  'Director+',
+];
+
+/**
+ * The level a title actually states, or null when it states none.
+ *
+ * The null matters: plenty of genuinely senior roles are titled just "Software
+ * Engineer". Treating unstated as mid would let a minimum-level filter throw
+ * those away, which is the same mistake as discarding every listing that omits
+ * a salary.
+ */
+export function detectSeniorityLevel(title) {
   for (const { re, level } of SENIORITY) if (re.test(title)) return level;
-  return 2;
+  return null;
+}
+
+/** 0 intern, 1 junior, 2 mid (the assumption when unstated), 3 senior/staff,
+ *  4 principal, 5 exec. */
+export function detectSeniority(title) {
+  return detectSeniorityLevel(title) ?? 2;
+}
+
+/**
+ * Company-name comparison that survives the three shapes the same employer
+ * arrives in: ATS slug, legal display name, and whatever the user typed.
+ *
+ * Duplicated deliberately rather than imported from sources.js - rank.js has no
+ * dependencies on purpose, because it is the fallback that has to work when
+ * everything else is unavailable.
+ */
+function normalizeCompany(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b(inc|llc|ltd|limited|corp|corporation|gmbh|co|plc|sa|ag|bv|nv)\b/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function companyOnList(company, list) {
+  const target = normalizeCompany(company);
+  if (!target) return false;
+  return list.some((entry) => {
+    const candidate = normalizeCompany(entry);
+    if (!candidate) return false;
+    return target === candidate || target.includes(candidate) || candidate.includes(target);
+  });
 }
 
 function words(text) {
@@ -116,7 +164,8 @@ export function heuristicScore(job, { prompt = '', filters = {} } = {}) {
     }
   }
 
-  // 6. Seniority alignment, 6 points per level of distance.
+  // 6. Seniority alignment, 6 points per level of distance from the preferred
+  //    level.
   const wanted = Number(filters.seniority);
   if (Number.isFinite(wanted) && wanted >= 0) {
     const gap = Math.abs(detectSeniority(job.title) - wanted);
@@ -127,6 +176,31 @@ export function heuristicScore(job, { prompt = '', filters = {} } = {}) {
       score += 5;
       reasons.push('seniority matches');
     }
+  }
+
+  // 7. Below the stated minimum level. The ingest filter already drops these,
+  //    so this only bites jobs collected before the minimum was set - without
+  //    it, raising the minimum would leave the old ones sitting at the top of
+  //    the list until they were archived by hand.
+  const floorLevel = Number(filters.minSeniority);
+  if (Number.isFinite(floorLevel) && floorLevel >= 0) {
+    const stated = detectSeniorityLevel(job.title);
+    if (stated !== null && stated < floorLevel) {
+      score -= 25;
+      reasons.push(`below your minimum level (${SENIORITY_LABELS[stated]})`);
+    }
+  }
+
+  // 8. Curated companies. In "limit" mode the filter has already removed
+  //    everyone else, so the boost only changes the ordering in "prioritize"
+  //    mode - which is the whole difference between the two.
+  const companies = String(filters.companies || '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean);
+  if (companies.length > 0 && companyOnList(job.company, companies)) {
+    score += 15;
+    reasons.unshift('on your company list');
   }
 
   return {

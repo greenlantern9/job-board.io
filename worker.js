@@ -23,6 +23,7 @@ import { loadSession, findUserById, purgeExpired } from './src/auth.js';
 import { AUTH_ROUTES, verifyEmailToken } from './src/routes/auth.js';
 import { APP_ROUTES } from './src/routes/app.js';
 import { boardsDueForRefresh, refreshBoard } from './src/ingest.js';
+import { curateBoard, boardsDueForCuration } from './src/curate.js';
 import { runNotifications, applyUnsubscribe } from './src/notify.js';
 
 const ROUTES = { ...AUTH_ROUTES, ...APP_ROUTES };
@@ -31,6 +32,11 @@ const ROUTES = { ...AUTH_ROUTES, ...APP_ROUTES };
 // round-robined: boardsDueForRefresh orders by last_refresh ascending, and the
 // boards that miss a tick lead the queue on the next one.
 const BOARDS_PER_TICK = 5;
+
+// Curation is far more expensive than a refresh - a model call plus up to two
+// dozen outbound probes - so only a couple of boards are revisited per tick.
+// boardsDueForCuration orders by staleness, so nothing is starved.
+const BOARDS_CURATED_PER_TICK = 2;
 
 const SESSION_TOUCH_MS = 60 * 60 * 1000;
 
@@ -96,6 +102,12 @@ async function handleApi(request, env, executionCtx, url) {
   if (!route) return notFound('No such endpoint.');
 
   const ctx = await buildContext(env, request);
+
+  // Handlers receive the auth context, not the runtime's ExecutionContext, so
+  // background work (source discovery on board creation) needs waitUntil
+  // bridged onto it. Without this the call is a TypeError that surfaces as a
+  // generic 500 on an otherwise successful request.
+  ctx.waitUntil = (promise) => executionCtx.waitUntil(promise);
 
   if (route.auth !== false) {
     if (!ctx.user || !ctx.session) return unauthorized();
@@ -203,10 +215,24 @@ async function runCron(env) {
   await ensureSchema(env);
   await purgeExpired(env);
 
+  const selfHost = new URL(env.SITE_URL || 'https://job-boards.io').hostname;
+
+  // Revalidate source lists before refreshing, so a board that just had dead
+  // sources retired and fresh ones connected pulls from the new set on this
+  // same tick. Kept to a couple of boards because each one costs a model call
+  // plus a burst of outbound probes.
+  for (const board of await boardsDueForCuration(env, { limit: BOARDS_CURATED_PER_TICK })) {
+    try {
+      await curateBoard(env, board, { selfHost });
+    } catch (err) {
+      console.error('curation failed', board.id, err && err.stack ? err.stack : err);
+    }
+  }
+
   const due = await boardsDueForRefresh(env, { limit: BOARDS_PER_TICK });
   for (const board of due) {
     try {
-      await refreshBoard(env, board, { selfHost: new URL(env.SITE_URL || 'https://job-boards.io').hostname });
+      await refreshBoard(env, board, { selfHost });
     } catch (err) {
       // One board's failure must not stop the rest of the tick, or a single bad
       // board would starve every other user's schedule.

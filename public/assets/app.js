@@ -76,6 +76,7 @@ const state = {
   query: '',
   lastSync: null,
   pollTimer: null,
+  provisionTimer: null,
   mfaRecoveryMode: false,
 };
 
@@ -438,7 +439,7 @@ function renderEmptyShell() {
   empty.append(
     h('h3', { text: 'Create your first board' }),
     h('p', {
-      text: 'A board holds the criteria you care about and the company job boards it pulls from. Most people start with one and add more later.',
+      text: 'Describe the job you want in plain English. We find the employers worth watching, connect to their job boards, and start ranking — you do not have to look anything up.',
     }),
     h('button', { class: 'btn btn--primary', text: 'New board', onclick: openBoardEditor })
   );
@@ -578,15 +579,66 @@ function renderNoResults() {
     return;
   }
 
+  // A board with no refresh yet is still being provisioned - discovery runs
+  // server-side on creation. Showing a setup task here would be asking the user
+  // to do work the system is already doing.
+  if (!hasSources) {
+    empty.append(
+      h('h3', { text: 'Finding sources for this board' }),
+      h('p', {
+        text: 'We are reading your criteria, picking employers worth watching, and checking each one has a live job board. Jobs appear here as they land — usually within a minute.',
+      }),
+      h('span', { class: 'spinner' })
+    );
+    watchProvisioning();
+    return;
+  }
+
   empty.append(
-    h('h3', { text: hasSources ? 'No jobs yet' : 'Add a source to start pulling jobs' }),
+    h('h3', { text: 'No jobs matched yet' }),
     h('p', {
-      text: hasSources
-        ? 'The sources on this board returned nothing that matched your filters. Loosen the filters, or add another company.'
-        : 'Point this board at a company job board — Greenhouse, Lever, or Ashby — or paste a job RSS feed.',
+      text: 'The connected sources returned nothing matching your filters. Loosening the minimum level or salary usually opens it up, or re-run source discovery to widen the net.',
     }),
-    h('button', { class: 'btn btn--primary', text: 'Manage sources', onclick: openSources })
+    h(
+      'div',
+      { style: 'display:flex;gap:.5rem' },
+      h('button', {
+        class: 'btn btn--primary',
+        text: 'Find more sources',
+        onclick: async (event) => {
+          await busy(event.target, 'Searching…', runCuration)(event);
+        },
+      }),
+      h('button', { class: 'btn btn--ghost', text: 'Edit criteria', onclick: () => {
+        const board = state.boards.find((b) => b.id === state.boardId);
+        if (board) openBoardEditor(board);
+      } })
+    )
   );
+}
+
+/** Poll while a freshly created board is being provisioned server-side. */
+function watchProvisioning(attempt = 0) {
+  if (state.provisionTimer) clearTimeout(state.provisionTimer);
+  if (attempt > 12) return; // give up after ~2 minutes; the cron will catch it
+  state.provisionTimer = setTimeout(async () => {
+    try {
+      const before = state.jobs.length;
+      await loadJobs();
+      await loadBoards();
+      if (state.jobs.length === before) watchProvisioning(attempt + 1);
+      else toast(`${state.jobs.length} jobs found`);
+    } catch {
+      watchProvisioning(attempt + 1);
+    }
+  }, 10000);
+}
+
+async function runCuration() {
+  const result = await api('/api/boards/curate', { method: 'POST', body: { id: state.boardId } });
+  await loadJobs();
+  await loadBoards();
+  toast(result.note || 'Sources checked');
 }
 
 // --- kanban ----------------------------------------------------------------
@@ -875,20 +927,42 @@ function openBoardEditor(existing) {
   const locations = h('input', { class: 'input', value: filters.locations || '', placeholder: 'new york, london' });
   const minSalary = h('input', { class: 'input', type: 'number', min: '0', step: '5000', value: String(filters.minSalary || 0) });
   const remoteOnly = h('input', { type: 'checkbox', checked: Boolean(filters.remoteOnly) });
+  const LEVELS = [
+    ['0', 'Internship'],
+    ['1', 'Junior'],
+    ['2', 'Mid'],
+    ['3', 'Senior / Staff'],
+    ['4', 'Principal'],
+    ['5', 'Director+'],
+  ];
+
   const seniority = h(
     'select',
     { class: 'select' },
-    ...[
-      ['', 'Any level'],
-      ['0', 'Internship'],
-      ['1', 'Junior'],
-      ['2', 'Mid'],
-      ['3', 'Senior / Staff'],
-      ['4', 'Principal'],
-      ['5', 'Director+'],
-    ].map(([value, label]) =>
+    ...[['', 'No preference'], ...LEVELS].map(([value, label]) =>
       h('option', { value, selected: String(filters.seniority ?? '') === value }, label)
     )
+  );
+
+  const minSeniority = h(
+    'select',
+    { class: 'select' },
+    ...[['', 'No minimum'], ...LEVELS].map(([value, label]) =>
+      h('option', { value, selected: String(filters.minSeniority ?? '') === value }, label)
+    )
+  );
+
+  const companies = h('textarea', {
+    class: 'textarea',
+    style: 'min-height:5rem',
+    placeholder: 'Stripe, Linear, Vercel, Ramp',
+    text: filters.companies || '',
+  });
+  const companyMode = h(
+    'select',
+    { class: 'select' },
+    h('option', { value: 'prioritize', selected: filters.companyMode !== 'limit' }, 'Prioritize these'),
+    h('option', { value: 'limit', selected: filters.companyMode === 'limit' }, 'Only these companies')
   );
   const refreshEvery = h(
     'select',
@@ -928,6 +1002,9 @@ function openBoardEditor(existing) {
           minSalary: Number(minSalary.value) || 0,
           remoteOnly: remoteOnly.checked,
           seniority: seniority.value === '' ? undefined : Number(seniority.value),
+          minSeniority: minSeniority.value === '' ? undefined : Number(minSeniority.value),
+          companies: companies.value,
+          companyMode: companyMode.value,
         },
       };
       const result = await api(board ? '/api/boards/update' : '/api/boards/create', {
@@ -937,8 +1014,13 @@ function openBoardEditor(existing) {
       closeModal();
       if (!board && result.board) state.boardId = result.board.id;
       await loadBoards();
-      toast(board ? 'Board saved' : 'Board created — now add a source');
-      if (!board) openSources();
+      if (board) {
+        toast('Board saved');
+      } else {
+        // Sources are found server-side; the board fills itself in.
+        toast('Board created — finding sources now');
+        watchProvisioning();
+      }
     })
   );
 
@@ -951,11 +1033,28 @@ function openBoardEditor(existing) {
       prompt,
       'Plain English works best. This is what the ranking reads — the more specific, the better it sorts.'
     ),
+    h('div', { class: 'label', style: 'margin-top:1.5rem', text: 'Companies' }),
+    fieldRow(
+      'Company list',
+      companies,
+      'Comma separated. We find each one’s job board for you — no need to look anything up.'
+    ),
+    fieldRow(
+      'How to use it',
+      companyMode,
+      'Prioritize ranks these above everything else. Only these makes it an allowlist and drops the rest.'
+    ),
+
     h('div', { class: 'label', style: 'margin-top:1.5rem', text: 'Filters (applied before ranking)' }),
     h('div', { class: 'row' }, fieldRow('Must mention', keywords, 'Comma separated. Any one is enough.'), fieldRow('Rule out', exclude, 'Comma separated.')),
     h('div', { class: 'row' }, fieldRow('Locations', locations, 'Remote jobs always pass.'), fieldRow('Minimum salary', minSalary, 'Jobs with no published range are kept.')),
-    h('div', { class: 'row' }, fieldRow('Seniority', seniority), fieldRow('Refresh', refreshEvery)),
-    fieldRow('Refresh mode', refreshMode),
+    h(
+      'div',
+      { class: 'row' },
+      fieldRow('Minimum level', minSeniority, 'Drops anything below it. Titles that state no level are kept.'),
+      fieldRow('Preferred level', seniority, 'Ranking nudge, not a filter.')
+    ),
+    h('div', { class: 'row' }, fieldRow('Refresh', refreshEvery), fieldRow('Refresh mode', refreshMode)),
     h('label', { class: 'checkbox' }, remoteOnly, h('span', { text: 'Remote roles only' })),
     h(
       'div',
@@ -994,12 +1093,16 @@ async function openSources() {
 
 async function renderSources(container) {
   clear(container);
-  const { sources } = await api(`/api/sources?boardId=${encodeURIComponent(state.boardId)}`);
+  const { sources, board } = await api(`/api/sources?boardId=${encodeURIComponent(state.boardId)}`);
 
   const rows = h('div', { class: 'list-rows' });
   if (sources.length === 0) {
     rows.append(
-      h('p', { class: 'muted', style: 'font-size:.875rem', text: 'No sources yet. Add one below.' })
+      h('p', {
+        class: 'muted',
+        style: 'font-size:.875rem',
+        text: 'None connected yet — discovery runs automatically after a board is created.',
+      })
     );
   }
   for (const source of sources) {
@@ -1011,7 +1114,12 @@ async function renderSources(container) {
         h(
           'div',
           { class: 'list-row__main' },
-          h('span', { class: 'list-row__title', text: source.label || source.identifier }),
+          h(
+            'span',
+            { class: 'list-row__title' },
+            source.label || source.identifier,
+            source.auto ? h('span', { class: 'tag', style: 'margin-left:.5rem', text: 'auto' }) : null
+          ),
           h('span', {
             class: 'list-row__sub',
             text: source.lastError
@@ -1101,22 +1209,97 @@ async function renderSources(container) {
     })
   );
 
+  // --- discovery ---
+  const curate = h('button', { class: 'btn btn--primary', text: 'Find sources now' });
+  curate.addEventListener(
+    'click',
+    busy(curate, 'Searching…', async () => {
+      await runCuration();
+      await renderSources(container);
+    })
+  );
+
+  const suggestOut = h('div', { class: 'list-rows', style: 'margin-top:.75rem' });
+  const suggest = h('button', { class: 'btn btn--ghost', text: 'Suggest similar companies' });
+  suggest.addEventListener(
+    'click',
+    busy(suggest, 'Thinking…', async () => {
+      clear(suggestOut);
+      const res = await api('/api/sources/suggest', {
+        method: 'POST',
+        body: { boardId: state.boardId },
+      });
+      if (!res.ok) {
+        suggestOut.append(h('div', { class: 'notice notice--warn', text: res.error }));
+        return;
+      }
+      if (res.companies.length === 0) {
+        suggestOut.append(
+          h('div', {
+            class: 'notice',
+            text: `Checked ${res.checked} candidates but none had a reachable job board right now.`,
+          })
+        );
+        return;
+      }
+      for (const company of res.companies) {
+        suggestOut.append(
+          h(
+            'div',
+            { class: 'list-row' },
+            h('span', { class: 'dot dot--ok' }),
+            h(
+              'div',
+              { class: 'list-row__main' },
+              h('span', { class: 'list-row__title', text: `${company.name} · ${company.count} open` }),
+              h('span', { class: 'list-row__sub', text: `${company.kind} · ${company.reason}` })
+            ),
+            h('button', {
+              class: 'btn btn--primary btn--sm',
+              text: 'Add',
+              onclick: async (event) => {
+                await busy(event.target, 'Adding…', async () => {
+                  await api('/api/sources/create', {
+                    method: 'POST',
+                    body: {
+                      boardId: state.boardId,
+                      kind: company.kind,
+                      identifier: company.identifier,
+                      label: company.name,
+                    },
+                  });
+                  toast(`${company.name} connected`);
+                  await renderSources(container);
+                })(event);
+              },
+            })
+          )
+        );
+      }
+    })
+  );
+
   container.append(
     h(
       'div',
       { class: 'panel' },
-      h('h3', { text: 'Connected sources' }),
+      h('h3', { text: 'Where these jobs come from' }),
       h('p', {
-        text: 'Each source is a public company job board. Paused sources stay configured but stop pulling.',
+        text: board && board.curateNote
+          ? board.curateNote
+          : 'Sources are chosen for you from your criteria, verified against a live job board, and re-checked weekly. Ones that go quiet or start failing are retired automatically.',
       }),
-      rows
+      rows,
+      h('div', { style: 'display:flex;gap:.5rem;margin-top:1rem' }, curate, suggest),
+      suggestOut
     ),
     h(
-      'div',
+      'details',
       { class: 'panel' },
-      h('h3', { text: 'Add a source' }),
+      h('summary', { style: 'cursor:pointer;font-weight:600;font-size:.9375rem', text: 'Add one by hand' }),
       h('p', {
-        text: 'For an ATS, use the company identifier from its careers URL — boards.greenhouse.io/stripe means "stripe".',
+        style: 'margin-top:.75rem',
+        text: 'Rarely needed. For an ATS, use the identifier from the careers URL — boards.greenhouse.io/stripe means "stripe".',
       }),
       h('div', { class: 'row' }, fieldRow('Type', kind), fieldRow('Identifier', identifier)),
       fieldRow('Label', label, 'Optional. Shown instead of the identifier.'),
@@ -1674,6 +1857,7 @@ async function boot() {
 
   // Add the alerts entry point once the app chrome exists.
   $('.sidebar__section').append(
+    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Sources', onclick: openSources }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Alerts', onclick: openAlerts })
   );
 

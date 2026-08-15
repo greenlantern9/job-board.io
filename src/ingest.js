@@ -44,15 +44,17 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
   };
 
   if (sources.length === 0) {
+    // Curation is what fills this in, and it runs on board creation and on a
+    // schedule. Say that rather than sending the user off to configure things.
     await run(
       env,
       `UPDATE boards SET last_refresh = ?, last_error = ?, updated_at = ? WHERE id = ?`,
       nowIso(),
-      'No sources configured yet - add a company board or feed to start pulling jobs.',
+      'Still finding sources for this board. This usually takes a few seconds.',
       nowIso(),
       board.id
     );
-    summary.warnings.push('No sources configured.');
+    summary.warnings.push('No sources connected yet.');
     return summary;
   }
 
@@ -108,10 +110,16 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
       }
     }
 
+    // empty_streak drives retirement: a board that keeps returning nothing has
+    // either stopped hiring or no longer matches, and curation reclaims the
+    // slot. Any yield at all resets it.
     await run(
       env,
-      `UPDATE sources SET last_status = 'ok', last_error = '', last_fetched = ?, found_count = ? WHERE id = ?`,
+      `UPDATE sources SET last_status = 'ok', last_error = '', last_fetched = ?, found_count = ?,
+         empty_streak = CASE WHEN ? > 0 THEN 0 ELSE empty_streak + 1 END
+       WHERE id = ?`,
       nowIso(),
+      kept,
       kept,
       source.id
     );

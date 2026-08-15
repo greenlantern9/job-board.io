@@ -9,6 +9,8 @@ import { queryAll, queryOne, run, nowIso, parseJson } from '../db.js';
 import { newId } from '../crypto.js';
 import { SOURCE_KINDS, validateSlug, validateFeedUrl, fetchSource, SourceError } from '../sources.js';
 import { refreshBoard, scoreUnscored, boardWithFilters } from '../ingest.js';
+import { suggestCompanies } from '../suggest.js';
+import { curateBoard } from '../curate.js';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
 
 export const JOB_STATUSES = ['new', 'saved', 'applied', 'interview', 'offer', 'rejected', 'archived'];
@@ -29,10 +31,18 @@ function cleanFilters(input) {
     locations: text(raw.locations),
     remoteOnly: Boolean(raw.remoteOnly),
     minSalary: Math.max(0, Math.min(10_000_000, Number(raw.minSalary) || 0)),
+    // Curated company list. "prioritize" boosts them in the ranking;
+    // "limit" makes the list an allowlist and drops everything else.
+    companies: text(raw.companies, 2000),
+    companyMode: raw.companyMode === 'limit' ? 'limit' : 'prioritize',
   };
   const seniority = Number(raw.seniority);
   if (Number.isInteger(seniority) && seniority >= 0 && seniority <= 5) {
     filters.seniority = seniority;
+  }
+  const minSeniority = Number(raw.minSeniority);
+  if (Number.isInteger(minSeniority) && minSeniority >= 0 && minSeniority <= 5) {
+    filters.minSeniority = minSeniority;
   }
   return filters;
 }
@@ -47,6 +57,8 @@ function boardToPublic(row) {
     refreshEvery: row.refresh_every,
     lastRefresh: row.last_refresh,
     lastError: row.last_error,
+    lastCurated: row.last_curated || '',
+    curateNote: row.curate_note || '',
     createdAt: row.created_at,
   };
 }
@@ -102,6 +114,25 @@ async function listBoards(request, env, ctx) {
   });
 }
 
+/** Re-run source discovery on demand, from the board's Sources panel. */
+async function curateNow(request, env, ctx) {
+  const body = await readJson(request);
+  const row = await ownedBoard(env, ctx.user.id, body.id);
+  if (!row) return notFound('Board not found.');
+  if (!(await allowRate(env.API_RATE_LIMIT, `curate:${ctx.user.id}`))) {
+    return tooMany('Give it a minute between source checks.');
+  }
+
+  const selfHost = new URL(request.url).hostname;
+  const summary = await curateBoard(env, boardWithFilters(row), { selfHost, force: true });
+  // Pull immediately so newly connected sources show results straight away.
+  if (summary.added > 0) {
+    const fresh = await queryOne(env, 'SELECT * FROM boards WHERE id = ?', row.id);
+    if (fresh) await refreshBoard(env, fresh, { selfHost });
+  }
+  return json({ ok: true, ...summary });
+}
+
 async function createBoard(request, env, ctx) {
   const body = await readJson(request);
   const name = String(body.name || '').trim().slice(0, 80);
@@ -130,7 +161,22 @@ async function createBoard(request, env, ctx) {
     now,
     now
   );
-  return json({ ok: true, board: boardToPublic(await queryOne(env, 'SELECT * FROM boards WHERE id = ?', id)) });
+
+  const created = await queryOne(env, 'SELECT * FROM boards WHERE id = ?', id);
+
+  // Connecting sources is not the user's job. Discovery and the first pull run
+  // in the background so the board is useful by the time they look at it,
+  // rather than presenting an empty screen and a setup task.
+  ctx.waitUntil(
+    (async () => {
+      const selfHost = new URL(request.url).hostname;
+      await curateBoard(env, boardWithFilters(created), { selfHost });
+      const fresh = await queryOne(env, 'SELECT * FROM boards WHERE id = ?', id);
+      if (fresh) await refreshBoard(env, fresh, { selfHost });
+    })().catch((err) => console.error('board bootstrap failed', err && err.stack))
+  );
+
+  return json({ ok: true, board: boardToPublic(created), provisioning: true });
 }
 
 async function updateBoard(request, env, ctx) {
@@ -222,11 +268,13 @@ async function listSources(request, env, ctx) {
       identifier: row.identifier,
       label: row.label,
       enabled: Boolean(row.enabled),
+      auto: Boolean(row.auto),
       lastStatus: row.last_status,
       lastError: row.last_error,
       lastFetched: row.last_fetched,
       foundCount: row.found_count,
     })),
+    board: { lastCurated: board.last_curated || '', curateNote: board.curate_note || '' },
   });
 }
 
@@ -292,6 +340,42 @@ async function testSource(request, env, ctx) {
     });
   } catch (err) {
     return json({ ok: false, error: err.message || 'Could not read that source.' }, { status: 200 });
+  }
+}
+
+/**
+ * Suggest companies resembling the ones already on the board. Every suggestion
+ * is verified against a live ATS board before it is returned, so each one can
+ * be added with a single click.
+ */
+async function suggestSources(request, env, ctx) {
+  const body = await readJson(request);
+  const row = await ownedBoard(env, ctx.user.id, body.boardId);
+  if (!row) return notFound('Board not found.');
+  // This one costs a model call plus up to 24 outbound probes.
+  if (!(await allowRate(env.API_RATE_LIMIT, `suggest:${ctx.user.id}`))) {
+    return tooMany('Give it a minute between suggestion runs.');
+  }
+
+  const board = boardWithFilters(row);
+  const sources = await queryAll(env, 'SELECT identifier, label FROM sources WHERE board_id = ?', board.id);
+  const known = [
+    ...sources.map((s) => s.label || s.identifier),
+    ...String(board.filters.companies || '')
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean),
+  ];
+
+  try {
+    const result = await suggestCompanies(env, board, {
+      known,
+      selfHost: new URL(request.url).hostname,
+    });
+    return json({ ok: true, ...result });
+  } catch (err) {
+    if (err.code === 'no_api_key') return json({ ok: false, error: err.message }, { status: 200 });
+    return json({ ok: false, error: err.message || 'Could not suggest companies.' }, { status: 200 });
   }
 }
 
@@ -549,12 +633,14 @@ export const APP_ROUTES = {
   'POST /api/boards/delete': { handler: deleteBoard },
   'POST /api/boards/refresh': { handler: refreshNow },
   'POST /api/boards/rescore': { handler: rescoreBoard },
+  'POST /api/boards/curate': { handler: curateNow },
 
   'GET /api/sources': { handler: listSources },
   'POST /api/sources/create': { handler: createSource },
   'POST /api/sources/update': { handler: updateSource },
   'POST /api/sources/delete': { handler: deleteSource },
   'POST /api/sources/test': { handler: testSource },
+  'POST /api/sources/suggest': { handler: suggestSources },
 
   'GET /api/jobs': { handler: listJobs },
   'GET /api/jobs/changes': { handler: jobChanges },

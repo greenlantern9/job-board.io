@@ -14,8 +14,16 @@ framework, no external requests from the browser.
   management, email verification, and password reset.
 - **Boards** hold your criteria — a free-text prompt *and* a structured filter
   form. Both feed the same ranking.
-- **Sources** pull from public ATS endpoints (Greenhouse, Lever, Ashby) or any
-  RSS/Atom job feed. Each is tested before it is saved.
+- **Sources are automatic.** Creating a board triggers discovery: the criteria
+  go to the model, it proposes employers, each is probed against the live
+  Greenhouse / Lever / Ashby APIs, and only the ones with a reachable board and
+  open roles get connected. Re-checked weekly — dead or silent sources are
+  retired and replaced. Manual add is still there, but it is no longer a step
+  anyone has to take.
+- **Company curation.** Name companies you care about and either *prioritize*
+  them (ranking boost) or *limit* the board to them (hard allowlist). Either
+  way we find their job board for you. "Suggest similar companies" returns only
+  verified boards with live openings.
 - **Ranking** scores every job 0–100 with a one-line reason. A deterministic
   heuristic always runs; Claude refines it when an API key is configured.
 - **Tracking** in a prioritized list view and a kanban board, sharing one record.
@@ -119,7 +127,7 @@ so nothing is a hard dependency on a paid service:
 
 | Missing | What happens |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Ranking uses the built-in heuristic only. Jobs still score 0–100 with reasons; the prompt is matched by keyword overlap rather than read. |
+| `ANTHROPIC_API_KEY` | Ranking uses the built-in heuristic only. Jobs still score 0–100 with reasons; the prompt is matched by keyword overlap rather than read. **Automatic source discovery is also off** — boards say so plainly and you add companies by hand. Naming companies in the board's company list still works, since finding their board is a probe, not a model call. |
 | `RESEND_API_KEY` | Alerts are recorded as `skipped_no_provider` and shown that way in the Alerts panel. Nothing is sent, and nothing is silently lost. |
 
 ---
@@ -230,6 +238,8 @@ Greenhouse board, which is why it is not part of `npm test`.
 ```
 worker.js              entry: routing, pages, cron
 src/
+  curate.js            automatic source discovery, validation, retirement
+  suggest.js           company suggestions, verified against live ATS boards
   crypto.js            PBKDF2, AES-GCM, HMAC tokens, ids
   totp.js              RFC 6238
   qr.js                QR encoder (byte mode, ECC M, versions 1-10)

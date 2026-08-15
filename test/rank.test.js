@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { heuristicScore, detectSeniority } from '../src/rank.js';
+import { heuristicScore, detectSeniority, detectSeniorityLevel } from '../src/rank.js';
 
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
 
@@ -104,6 +104,50 @@ test('remote counts for more when remote was asked for', () => {
   const wanted = heuristicScore(base(), { filters: { remoteOnly: true } });
   const incidental = heuristicScore(base(), { filters: {} });
   assert.ok(wanted.score > incidental.score);
+});
+
+test('unstated seniority is distinguishable from mid', () => {
+  // detectSeniority collapses both to 2 for ranking; detectSeniorityLevel keeps
+  // them apart so the minimum-level filter does not throw away untitled roles.
+  assert.equal(detectSeniorityLevel('Software Engineer'), null);
+  assert.equal(detectSeniority('Software Engineer'), 2);
+  assert.equal(detectSeniorityLevel('Senior Software Engineer'), 3);
+});
+
+test('jobs below the minimum level are pushed down, not just filtered', () => {
+  // Existing rows collected before the minimum was raised still need to sink.
+  const junior = heuristicScore(base({ title: 'Junior Backend Engineer' }), {
+    filters: { minSeniority: 3 },
+  });
+  const senior = heuristicScore(base({ title: 'Senior Backend Engineer' }), {
+    filters: { minSeniority: 3 },
+  });
+  assert.ok(senior.score > junior.score);
+  assert.match(junior.reason, /below your minimum level/);
+});
+
+test('an unstated level is not penalised by the minimum', () => {
+  const withMin = heuristicScore(base({ title: 'Software Engineer' }), {
+    filters: { minSeniority: 4 },
+  });
+  const without = heuristicScore(base({ title: 'Software Engineer' }), { filters: {} });
+  assert.equal(withMin.score, without.score);
+});
+
+test('companies on the curated list are boosted and told why', () => {
+  const listed = heuristicScore(base({ company: 'stripe' }), {
+    filters: { companies: 'Stripe, Linear' },
+  });
+  const other = heuristicScore(base({ company: 'acme' }), {
+    filters: { companies: 'Stripe, Linear' },
+  });
+  assert.ok(listed.score > other.score);
+  assert.match(listed.reason, /on your company list/);
+});
+
+test('the company boost tolerates slug and legal-suffix variation', () => {
+  const plain = heuristicScore(base({ company: 'gitlab' }), { filters: { companies: 'GitLab Inc.' } });
+  assert.match(plain.reason, /on your company list/);
 });
 
 test('every result carries a reason and a provenance tag', () => {

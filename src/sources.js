@@ -5,6 +5,8 @@
 // it, no logged-in endpoints. Each returns a list of normalized jobs; the
 // caller decides what to persist.
 
+import { detectSeniorityLevel } from './rank.js';
+
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_DESCRIPTION_CHARS = 4000;
 const USER_AGENT = 'job-boards.io/1.0 (+https://job-boards.io)';
@@ -333,6 +335,30 @@ function terms(value) {
 }
 
 /**
+ * Company names arrive in three shapes for the same employer: the ATS slug
+ * ("acme-corp"), the display name ("Acme Corp, Inc."), and whatever the user
+ * typed. Strip everything that varies so the three compare equal.
+ */
+export function normalizeCompany(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b(inc|llc|ltd|limited|corp|corporation|gmbh|co|plc|sa|ag|bv|nv)\b/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+export function companyMatches(company, list) {
+  const target = normalizeCompany(company);
+  if (!target) return false;
+  return list.some((entry) => {
+    const candidate = normalizeCompany(entry);
+    if (!candidate) return false;
+    // Substring either way, so "Stripe" matches "Stripe Payments" and a slug
+    // like "stripeinc" matches "Stripe".
+    return target === candidate || target.includes(candidate) || candidate.includes(target);
+  });
+}
+
+/**
  * Applies a board's filters to a normalized job. Filters run before scoring so
  * the model is never asked about roles the user has already ruled out.
  */
@@ -360,6 +386,21 @@ export function matchesFilters(job, filters = {}) {
     // Unknown salary is kept: dropping every listing that omits a range would
     // discard most of the market.
     if (best > 0 && best < minSalary) return false;
+  }
+
+  // A title that states no level is kept, for the same reason. Plenty of
+  // genuinely senior roles are titled just "Software Engineer".
+  const minSeniority = Number(filters.minSeniority);
+  if (Number.isFinite(minSeniority) && minSeniority >= 0) {
+    const stated = detectSeniorityLevel(job.title);
+    if (stated !== null && stated < minSeniority) return false;
+  }
+
+  // "limit" makes the company list a hard allowlist; "prioritize" leaves it to
+  // the ranking, which boosts these instead of excluding everyone else.
+  const companies = terms(filters.companies);
+  if (companies.length > 0 && filters.companyMode === 'limit') {
+    if (!companyMatches(job.company, companies)) return false;
   }
 
   return true;

@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS boards (
   refresh_every INTEGER NOT NULL DEFAULT 60,  -- minutes
   last_refresh  TEXT NOT NULL DEFAULT '',
   last_error    TEXT NOT NULL DEFAULT '',
+  last_curated  TEXT NOT NULL DEFAULT '',     -- when sources were last re-evaluated
+  curate_note   TEXT NOT NULL DEFAULT '',     -- what curation last did, shown in the UI
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -79,6 +81,8 @@ CREATE TABLE IF NOT EXISTS sources (
   identifier   TEXT NOT NULL,
   label        TEXT NOT NULL DEFAULT '',
   enabled      INTEGER NOT NULL DEFAULT 1,
+  auto         INTEGER NOT NULL DEFAULT 0,    -- 1 = chosen by curation, 0 = added by hand
+  empty_streak INTEGER NOT NULL DEFAULT 0,    -- consecutive refreshes yielding nothing
   last_status  TEXT NOT NULL DEFAULT '',      -- ok | error
   last_error   TEXT NOT NULL DEFAULT '',
   last_fetched TEXT NOT NULL DEFAULT '',
