@@ -13,7 +13,8 @@ framework, no external requests from the browser.
 - **Accounts** with optional TOTP two-factor auth, recovery codes, session
   management, email verification, and password reset.
 - **Boards** hold your criteria — a free-text prompt *and* a structured filter
-  form. Both feed the same ranking.
+  form. Both feed the same ranking. **Three boards per account**: boards are the
+  unit that multiplies cost, since each refreshes on its own schedule.
 - **Sources are automatic, and wide by default.** Two layers:
   - **Cross-company aggregators** — Remotive, Arbeitnow, RemoteOK, Himalayas —
     are attached to every board and searched with a query derived from its

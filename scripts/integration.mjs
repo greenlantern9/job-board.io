@@ -20,6 +20,7 @@ const password = 'integration-test-password-1';
 let cookie = '';
 let passed = 0;
 const failures = [];
+const state = { boardsMade: 1 };
 
 async function call(path, { method = 'GET', body } = {}) {
   const res = await fetch(`${BASE}${path}`, {
@@ -122,6 +123,39 @@ section('boards');
 
   const foreign = await call('/api/boards/update', { method: 'POST', body: { id: 'brd_not_mine', name: 'x' } });
   check("another user's board id is rejected", foreign.status === 404, foreign.payload);
+
+  // The ceiling is what bounds cost, so it is worth proving rather than
+  // trusting the dropdown.
+  const listed = await call('/api/boards');
+  const max = listed.payload.maxBoards;
+  check('the board ceiling is advertised to the client', max === 3, listed.payload);
+
+  const extras = [];
+  for (let i = state.boardsMade || 1; i < max; i++) {
+    const made = await call('/api/boards/create', {
+      method: 'POST',
+      body: { name: `Filler ${i}`, prompt: 'backend engineering roles, remote' },
+    });
+    extras.push(made.status);
+  }
+  check('boards up to the ceiling are accepted', extras.every((s) => s === 200), extras);
+
+  const overflow = await call('/api/boards/create', {
+    method: 'POST',
+    body: { name: 'One too many', prompt: 'backend engineering roles, remote' },
+  });
+  check('creating past the ceiling is refused', overflow.status === 400, overflow.payload);
+  check(
+    'the refusal says what to do about it',
+    /delete one/i.test(overflow.payload.error || ''),
+    overflow.payload
+  );
+
+  // Put the account back to one board so the rest of the run is unaffected.
+  const all = await call('/api/boards');
+  for (const b of (all.payload.boards || []).filter((b) => b.id !== boardId)) {
+    await call('/api/boards/delete', { method: 'POST', body: { id: b.id } });
+  }
 }
 
 section('sources');

@@ -61,6 +61,15 @@ function cleanFilters(input) {
  */
 const MAX_REFRESH_MINUTES = 10080; // a week
 
+/**
+ * Hard ceiling on boards per account.
+ *
+ * Boards are the unit that multiplies cost: each one refreshes on its own
+ * schedule and each refresh can spend up to four model batches. Three is also
+ * about as many distinct searches as anyone actually works at once.
+ */
+export const MAX_BOARDS = 3;
+
 function clampRefreshInterval(value) {
   const minutes = Number(value);
   if (!Number.isFinite(minutes) || minutes <= 0) return MIN_REFRESH_MINUTES;
@@ -131,6 +140,9 @@ async function listBoards(request, env, ctx) {
   }
   return json({
     boards: rows.map((row) => ({ ...boardToPublic(row), counts: byBoard[row.id] || {} })),
+    // Sent so the client can disable "New board" at the limit rather than
+    // letting someone fill in a form that is going to be rejected.
+    maxBoards: MAX_BOARDS,
   });
 }
 
@@ -163,7 +175,11 @@ async function createBoard(request, env, ctx) {
     'SELECT COUNT(*) AS n FROM boards WHERE user_id = ?',
     ctx.user.id
   );
-  if ((count && count.n) >= 20) return badRequest('You have reached the limit of 20 boards.');
+  if ((count && count.n) >= MAX_BOARDS) {
+    return badRequest(
+      `You can have ${MAX_BOARDS} boards for now. Delete one to make room, or widen an existing board's criteria.`
+    );
+  }
 
   const id = newId('brd_');
   const now = nowIso();

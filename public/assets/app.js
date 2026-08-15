@@ -79,6 +79,7 @@ const state = {
   lastSync: null,
   pollTimer: null,
   provisionTimer: null,
+  maxBoards: 3,
   mfaRecoveryMode: false,
 };
 
@@ -369,8 +370,9 @@ async function enterApp(user) {
 }
 
 async function loadBoards({ keepSelection = true } = {}) {
-  const { boards } = await api('/api/boards');
+  const { boards, maxBoards } = await api('/api/boards');
   state.boards = boards;
+  if (maxBoards) state.maxBoards = maxBoards;
 
   if (boards.length === 0) {
     state.boardId = null;
@@ -391,6 +393,14 @@ async function loadBoards({ keepSelection = true } = {}) {
 }
 
 function renderBoardList() {
+  // Reflect the ceiling in the button rather than letting someone fill in a
+  // form that the server is going to reject.
+  const atLimit = state.boards.length >= state.maxBoards;
+  const newBtn = $('#new-board');
+  newBtn.disabled = atLimit;
+  newBtn.textContent = atLimit ? `${state.maxBoards} of ${state.maxBoards} boards used` : '+ New board';
+  newBtn.title = atLimit ? 'Delete a board to make room for another.' : '';
+
   const list = clear($('#board-list'));
   for (const board of state.boards) {
     const total = Object.entries(board.counts || {})
