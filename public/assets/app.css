@@ -1041,6 +1041,85 @@
   gap: 0.9rem;
 }
 
+/* --- required fields ---------------------------------------------------- */
+
+.req {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--r-pill);
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-size: 0.5625rem;
+  letter-spacing: 0.1em;
+}
+
+.input.is-invalid,
+.textarea.is-invalid {
+  border-color: var(--danger);
+  background: rgba(242, 109, 97, 0.06);
+}
+
+/* --- advanced disclosure ------------------------------------------------ */
+
+.advanced {
+  margin-top: 1.75rem;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.advanced__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+/* Replace the default marker with one that matches the wordmark's rotated
+   square, and rotate it on open. */
+.advanced__summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced__summary::before {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(-45deg);
+  transition: transform 0.18s var(--ease);
+  flex: none;
+  margin-left: 0.15rem;
+}
+
+.advanced[open] .advanced__summary::before {
+  transform: rotate(45deg);
+}
+
+.advanced__summary:hover {
+  color: var(--text);
+}
+
+.advanced__hint {
+  margin-left: auto;
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.advanced__body {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 1rem;
+}
+
 @media (max-width: 560px) {
   .row {
     grid-template-columns: 1fr;

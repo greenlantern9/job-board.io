@@ -70,6 +70,12 @@ async function ensureAggregators(env, board, existing) {
   const query = boardQuery(board);
   let added = 0;
 
+  // With nothing to search for, an aggregator matches everything and the board
+  // fills with a few hundred unrelated postings. Better to connect none and let
+  // the criteria arrive first - the UI requires them, so this is the guard for
+  // boards created before that rule or through the API directly.
+  if (!query) return 0;
+
   for (const kind of AGGREGATOR_KINDS) {
     const current = existing.find((s) => s.kind === kind);
     if (current) {

@@ -982,6 +982,30 @@ function fieldRow(label, input, hint) {
   return h('label', { class: 'field' }, h('span', { text: label }), input, hint ? h('span', { class: 'hint', text: hint }) : null);
 }
 
+/** A field the form will not submit without. The marker is on the label rather
+ *  than only enforced on submit, so the requirement is visible up front. */
+function requiredRow(label, input, hint) {
+  return h(
+    'label',
+    { class: 'field' },
+    h('span', {}, label, h('span', { class: 'req', text: 'required' })),
+    input,
+    hint ? h('span', { class: 'hint', text: hint }) : null
+  );
+}
+
+/** Flags a field as the reason a submit failed, and clears on next input. */
+function flagInvalid(input, message) {
+  input.classList.add('is-invalid');
+  input.focus();
+  const clearFlag = () => {
+    input.classList.remove('is-invalid');
+    input.removeEventListener('input', clearFlag);
+  };
+  input.addEventListener('input', clearFlag);
+  toast(message, 'error');
+}
+
 // --- board editor ----------------------------------------------------------
 
 function openBoardEditor(existing) {
@@ -1077,6 +1101,17 @@ function openBoardEditor(existing) {
   save.addEventListener(
     'click',
     busy(save, 'Saving…', async () => {
+      if (!name.value.trim()) {
+        flagInvalid(name, 'Give the board a name.');
+        return;
+      }
+      // Not arbitrary strictness: with no criteria there is nothing to derive a
+      // source query from, and the aggregators would pull unfiltered noise.
+      if (prompt.value.trim().length < 10 && !keywords.value.trim()) {
+        flagInvalid(prompt, 'Describe what you are looking for — a sentence is enough.');
+        return;
+      }
+
       const body = {
         id: board ? board.id : undefined,
         name: name.value.trim(),
@@ -1113,43 +1148,70 @@ function openBoardEditor(existing) {
     })
   );
 
+  // Two required fields, everything else behind a disclosure. The defaults are
+  // deliberately good enough to skip: sources are found automatically, recency
+  // already dominates the ranking, and an unset filter is a filter that cannot
+  // accidentally hide the job someone wanted.
   const body = h(
     'div',
     {},
-    fieldRow('Board name', name),
-    fieldRow(
+    requiredRow('Board name', name),
+    requiredRow(
       'What are you looking for?',
       prompt,
-      'Plain English works best. This is what the ranking reads — the more specific, the better it sorts.'
-    ),
-    h('div', { class: 'label', style: 'margin-top:1.5rem', text: 'Companies' }),
-    fieldRow(
-      'Company list',
-      companies,
-      'Comma separated. We find each one’s job board for you — no need to look anything up.'
-    ),
-    fieldRow(
-      'How to use it',
-      companyMode,
-      'Prioritize ranks these above everything else. Only these makes it an allowlist and drops the rest.'
+      'Plain English, the way you would tell a friend. This is what finds your sources and ranks every job — it is the only part that really matters.'
     ),
 
-    h('div', { class: 'label', style: 'margin-top:1.5rem', text: 'Filters (applied before ranking)' }),
-    h('div', { class: 'row' }, fieldRow('Must mention', keywords, 'Comma separated. Any one is enough.'), fieldRow('Rule out', exclude, 'Comma separated.')),
-    h('div', { class: 'row' }, fieldRow('Locations', locations, 'Remote jobs always pass.'), fieldRow('Minimum salary', minSalary, 'Jobs with no published range are kept.')),
     h(
-      'div',
-      { class: 'row' },
-      fieldRow('Minimum level', minSeniority, 'Drops anything below it. Titles that state no level are kept.'),
-      fieldRow('Preferred level', seniority, 'Ranking nudge, not a filter.')
+      'details',
+      { class: 'advanced', open: Boolean(board) },
+      h(
+        'summary',
+        { class: 'advanced__summary' },
+        h('span', { text: 'Advanced options' }),
+        h('span', { class: 'advanced__hint mono', text: 'all optional' })
+      ),
+
+      h('div', { class: 'advanced__body' }, [
+        h('p', {
+          class: 'hint',
+          style: 'margin:0 0 1.25rem',
+          text: 'Sensible defaults are already applied. Everything here narrows what you see, so leaving it alone casts the widest net.',
+        }),
+
+        h('div', { class: 'label', text: 'Companies' }),
+        fieldRow(
+          'Company list',
+          companies,
+          'Comma separated. We find each one’s job board for you — no need to look anything up.'
+        ),
+        fieldRow(
+          'How to use it',
+          companyMode,
+          'Prioritize ranks these above everything else. Only these makes it an allowlist and drops the rest.'
+        ),
+
+        h('div', { class: 'label', style: 'margin-top:1.5rem', text: 'Filters (applied before ranking)' }),
+        h('div', { class: 'row' }, fieldRow('Must mention', keywords, 'Comma separated. Any one is enough.'), fieldRow('Rule out', exclude, 'Comma separated.')),
+        h('div', { class: 'row' }, fieldRow('Locations', locations, 'Remote jobs always pass.'), fieldRow('Minimum salary', minSalary, 'Jobs with no published range are kept.')),
+        h(
+          'div',
+          { class: 'row' },
+          fieldRow('Minimum level', minSeniority, 'Drops anything below it. Titles that state no level are kept.'),
+          fieldRow('Preferred level', seniority, 'Ranking nudge, not a filter.')
+        ),
+        fieldRow(
+          'Ignore postings older than',
+          maxAge,
+          'Recency is already the heaviest ranking signal — this drops old postings entirely. Undated ones are kept.'
+        ),
+        h('label', { class: 'checkbox' }, remoteOnly, h('span', { text: 'Remote roles only' })),
+
+        h('div', { class: 'label', style: 'margin-top:1.5rem', text: 'Schedule' }),
+        h('div', { class: 'row' }, fieldRow('Refresh', refreshEvery), fieldRow('Refresh mode', refreshMode)),
+      ])
     ),
-    fieldRow(
-      'Ignore postings older than',
-      maxAge,
-      'Recency is already the heaviest ranking signal — this drops old postings entirely. Undated ones are kept.'
-    ),
-    h('div', { class: 'row' }, fieldRow('Refresh', refreshEvery), fieldRow('Refresh mode', refreshMode)),
-    h('label', { class: 'checkbox' }, remoteOnly, h('span', { text: 'Remote roles only' })),
+
     h(
       'div',
       { class: 'modal__foot' },
