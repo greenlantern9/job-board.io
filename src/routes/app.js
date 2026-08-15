@@ -11,6 +11,7 @@ import { SOURCE_KINDS, validateSlug, validateFeedUrl, fetchSource, SourceError }
 import { refreshBoard, scoreUnscored, boardWithFilters, MIN_REFRESH_MINUTES } from '../ingest.js';
 import { suggestCompanies } from '../suggest.js';
 import { curateBoard } from '../curate.js';
+import Anthropic from '@anthropic-ai/sdk';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
 
 export const JOB_STATUSES = ['new', 'saved', 'applied', 'interview', 'offer', 'rejected', 'archived'];
@@ -416,6 +417,60 @@ async function suggestSources(request, env, ctx) {
   }
 }
 
+/**
+ * Answer "is the model actually reachable" with the real reason when it is not.
+ *
+ * The failure modes are indistinguishable from the outside: a missing secret, a
+ * secret saved under the wrong name, a valid key with no credit on the account,
+ * and a revoked key all end up as "ranking fell back to the heuristic". This
+ * makes one small call and reports what came back.
+ */
+async function aiCheck(request, env, ctx) {
+  const model = env.SCORING_MODEL || 'claude-opus-5';
+
+  if (!env.ANTHROPIC_API_KEY) {
+    return json({
+      ok: false,
+      state: 'missing',
+      model,
+      message:
+        'No ANTHROPIC_API_KEY secret is set on this Worker. Check the name is exactly that, and that it was saved as a Secret rather than a plaintext variable.',
+    });
+  }
+
+  if (!(await allowRate(env.API_RATE_LIMIT, `aicheck:${ctx.user.id}`))) {
+    return tooMany('Give it a minute between checks.');
+  }
+
+  try {
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const response = await client.messages.create({
+      model,
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
+    });
+    const text = response.content.find((block) => block.type === 'text');
+    return json({
+      ok: true,
+      state: 'ready',
+      model,
+      message: `Connected. ${model} replied "${((text && text.text) || '').trim().slice(0, 30)}".`,
+    });
+  } catch (err) {
+    const raw = String((err && err.message) || err);
+    // Translate the two that actually happen into something actionable.
+    let message = raw.slice(0, 300);
+    if (/credit balance|insufficient/i.test(raw)) {
+      message = 'The key works, but the Anthropic account has no credit. Add credits in the Console under Settings, Billing.';
+    } else if (/authentication|invalid.*api.*key|401/i.test(raw)) {
+      message = 'That key was rejected. It may have been revoked, or copied incompletely - a valid one starts with sk-ant-.';
+    } else if (/model/i.test(raw) && /not.*found|does not exist/i.test(raw)) {
+      message = `The account cannot reach "${model}". Set SCORING_MODEL in wrangler.jsonc to a model it can use.`;
+    }
+    return json({ ok: false, state: 'error', model, message });
+  }
+}
+
 async function updateSource(request, env, ctx) {
   const body = await readJson(request);
   const source = await queryOne(
@@ -698,6 +753,7 @@ export const APP_ROUTES = {
   'POST /api/sources/delete': { handler: deleteSource },
   'POST /api/sources/test': { handler: testSource },
   'POST /api/sources/suggest': { handler: suggestSources },
+  'POST /api/account/ai-check': { handler: aiCheck },
 
   'GET /api/jobs': { handler: listJobs },
   'GET /api/jobs/changes': { handler: jobChanges },

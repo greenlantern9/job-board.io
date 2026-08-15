@@ -1455,7 +1455,34 @@ async function renderSources(container) {
     })
   );
 
+  // Definitive answer on whether the model is reachable. The failure modes all
+  // look the same from the outside, so this reports the actual reason.
+  const aiOut = h('div', { style: 'margin-top:.75rem' });
+  const aiBtn = h('button', { class: 'btn btn--ghost btn--sm', text: 'Check AI connection' });
+  aiBtn.addEventListener(
+    'click',
+    busy(aiBtn, 'Checking…', async () => {
+      const res = await api('/api/account/ai-check', { method: 'POST', body: {} });
+      clear(aiOut).append(
+        h('div', {
+          class: `notice notice--${res.ok ? 'ok' : res.state === 'missing' ? 'warn' : 'error'}`,
+          text: res.message,
+        })
+      );
+    })
+  );
+
   container.append(
+    h(
+      'div',
+      { class: 'panel' },
+      h('h3', { text: 'AI features' }),
+      h('p', {
+        text: 'Source discovery and criteria-aware ranking both need an Anthropic API key on the Worker. Without one the board still runs on the built-in ranking.',
+      }),
+      aiBtn,
+      aiOut
+    ),
     h(
       'div',
       { class: 'panel' },
