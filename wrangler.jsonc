@@ -67,12 +67,13 @@
 
   // `wrangler deploy` is declarative: it reconciles the Worker to this file on
   // every deploy, so bindings have to live here and not in the dashboard.
-  // Replace database_id after running: wrangler d1 create job-board
+  // The id is not a secret - it names a database that only this account's
+  // credentials can reach.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "job-board",
-      "database_id": "REPLACE_WITH_ID_FROM_WRANGLER_D1_CREATE"
+      "database_id": "fbea37e3-a19c-4f0c-a670-91dd3fec6800"
     }
   ],
 
