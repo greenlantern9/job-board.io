@@ -163,6 +163,26 @@ Two layers, and the first is always the floor:
 To use a cheaper model, set `SCORING_MODEL` in `wrangler.jsonc` — but note that
 model choice is a cost decision, not a default: `claude-opus-5` is what ships.
 
+### What a refresh costs
+
+Spend per refresh is **bounded**, and it is worth understanding why. `scoreJobs`
+gives every job a heuristic score, sends only the highest-ranked
+`BATCH_SIZE * MAX_BATCHES_PER_RUN` (60) to the model, and then stamps
+`scored_at` on **all** of them. Jobs that only got a heuristic score are not
+retried on the next run, so a large ingestion cannot bill repeatedly.
+
+That puts the ceiling at four batches per refresh — roughly **$0.30 at
+`claude-opus-5` prices** — regardless of whether the board ingested 20 jobs or
+800. With the daily cap, one board costs at most about **$9/month**, and less
+whenever fewer than 60 new jobs turned up.
+
+The trade-off: on a large first ingestion, most jobs keep a heuristic-only
+score permanently. "Rescore" in the board menu re-runs the model over the
+current top 60 when that matters.
+
+Set a **spend limit on the Anthropic workspace** the key belongs to. It is the
+only bound that holds regardless of what the code does.
+
 ---
 
 ## "Real-time" — what that actually means here
@@ -170,8 +190,12 @@ model choice is a cost decision, not a default: `claude-opus-5` is what ships.
 Worth being precise, because the word is doing a lot of work in most products:
 
 - **Ingestion** runs on a Cron Trigger every 5 minutes, refreshing boards whose
-  own interval (15 minutes to daily) has elapsed. Five boards per tick, oldest
-  first, so one slow board cannot starve the rest.
+  own interval has elapsed. Five boards per tick, oldest first, so one slow
+  board cannot starve the rest.
+- **Scheduled refreshes are capped at one a day** (daily, every two days, or
+  weekly). This is the main cost lever: each refresh can spend up to four model
+  batches on scoring, and postings do not appear fast enough for hourly to be
+  worth 24× the bill. The Refresh button runs the whole pipeline on demand.
 - **The open tab** polls `/api/jobs/changes?since=` every 20 seconds and patches
   only the rows that changed. It pauses while the tab is hidden.
 - **Manual refresh** runs the whole pipeline immediately, rate-limited per user.

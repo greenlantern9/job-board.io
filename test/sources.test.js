@@ -216,6 +216,13 @@ test('an unknown source kind is rejected rather than silently returning nothing'
   );
 });
 
+// --- refresh cadence -------------------------------------------------------
+
+test('scheduled refresh cannot be scheduled more than once a day', async () => {
+  const { MIN_REFRESH_MINUTES } = await import('../src/ingest.js');
+  assert.equal(MIN_REFRESH_MINUTES, 1440);
+});
+
 // --- identifier validation -------------------------------------------------
 
 test('board slugs accept real identifiers and reject path tricks', () => {

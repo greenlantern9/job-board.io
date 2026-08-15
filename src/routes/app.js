@@ -8,7 +8,7 @@ import { json, badRequest, notFound, readJson, tooMany, allowRate } from '../htt
 import { queryAll, queryOne, run, nowIso, parseJson } from '../db.js';
 import { newId } from '../crypto.js';
 import { SOURCE_KINDS, validateSlug, validateFeedUrl, fetchSource, SourceError } from '../sources.js';
-import { refreshBoard, scoreUnscored, boardWithFilters } from '../ingest.js';
+import { refreshBoard, scoreUnscored, boardWithFilters, MIN_REFRESH_MINUTES } from '../ingest.js';
 import { suggestCompanies } from '../suggest.js';
 import { curateBoard } from '../curate.js';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
@@ -49,6 +49,22 @@ function cleanFilters(input) {
     filters.maxAgeDays = maxAgeDays;
   }
   return filters;
+}
+
+/**
+ * Scheduled refreshes are capped at one a day.
+ *
+ * Each refresh can spend up to four model batches on scoring, so the interval
+ * is the main lever on what this costs to run. Hourly bought very little -
+ * postings do not appear that fast - and multiplied the bill by 24. Manual
+ * refresh is still there for when someone actually wants it now.
+ */
+const MAX_REFRESH_MINUTES = 10080; // a week
+
+function clampRefreshInterval(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes <= 0) return MIN_REFRESH_MINUTES;
+  return Math.max(MIN_REFRESH_MINUTES, Math.min(MAX_REFRESH_MINUTES, Math.round(minutes)));
 }
 
 function boardToPublic(row) {
@@ -161,7 +177,7 @@ async function createBoard(request, env, ctx) {
     String(body.prompt || '').slice(0, 4000),
     JSON.stringify(cleanFilters(body.filters)),
     body.refreshMode === 'manual' ? 'manual' : 'schedule',
-    Math.max(15, Math.min(1440, Number(body.refreshEvery) || 60)),
+    clampRefreshInterval(body.refreshEvery),
     now,
     now
   );
@@ -199,7 +215,7 @@ async function updateBoard(request, env, ctx) {
     String(body.prompt ?? board.prompt).slice(0, 4000),
     JSON.stringify(cleanFilters(body.filters ?? parseJson(board.filters, {}))),
     body.refreshMode === 'manual' ? 'manual' : 'schedule',
-    Math.max(15, Math.min(1440, Number(body.refreshEvery ?? board.refresh_every) || 60)),
+    clampRefreshInterval(body.refreshEvery ?? board.refresh_every),
     nowIso(),
     board.id,
     ctx.user.id

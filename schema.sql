@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS boards (
   prompt        TEXT NOT NULL DEFAULT '',     -- free-text criteria, fed to the scorer
   filters       TEXT NOT NULL DEFAULT '{}',   -- JSON: keywords, exclude, locations, remote, min_salary, seniority
   refresh_mode  TEXT NOT NULL DEFAULT 'schedule', -- manual | schedule
-  refresh_every INTEGER NOT NULL DEFAULT 60,  -- minutes
+  refresh_every INTEGER NOT NULL DEFAULT 1440, -- minutes; floor is one day
   last_refresh  TEXT NOT NULL DEFAULT '',
   last_error    TEXT NOT NULL DEFAULT '',
   last_curated  TEXT NOT NULL DEFAULT '',     -- when sources were last re-evaluated

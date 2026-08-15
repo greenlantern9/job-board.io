@@ -9,6 +9,9 @@ import { newId } from './crypto.js';
 /** Jobs older than this are dropped at ingest - they are almost always filled. */
 const MAX_AGE_DAYS = 120;
 
+/** One scheduled refresh a day. See clampRefreshInterval in routes/app.js. */
+export const MIN_REFRESH_MINUTES = 1440;
+
 function isTooOld(job) {
   if (!job.postedAt) return false;
   const age = (Date.now() - new Date(job.postedAt).getTime()) / 86400000;
@@ -269,6 +272,8 @@ export async function boardsDueForRefresh(env, { limit = 25 } = {}) {
   return rows.filter((board) => {
     if (!board.last_refresh) return true;
     const elapsed = now - new Date(board.last_refresh).getTime();
-    return elapsed >= Math.max(5, board.refresh_every || 60) * 60000;
+    // Floored at a day regardless of what is stored, so a board written before
+    // the cap - or through the API directly - cannot schedule itself hourly.
+    return elapsed >= Math.max(MIN_REFRESH_MINUTES, board.refresh_every || MIN_REFRESH_MINUTES) * 60000;
   });
 }

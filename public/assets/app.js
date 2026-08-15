@@ -1076,18 +1076,18 @@ function openBoardEditor(existing) {
       h('option', { value, selected: String(filters.maxAgeDays ?? '') === value }, label)
     )
   );
+  // Capped at one scheduled refresh a day. Each refresh can spend up to four
+  // model batches, and postings do not appear fast enough for hourly to be
+  // worth 24x the cost. The Refresh button is there for "now".
   const refreshEvery = h(
     'select',
     { class: 'select' },
     ...[
-      [15, 'Every 15 minutes'],
-      [30, 'Every 30 minutes'],
-      [60, 'Hourly'],
-      [180, 'Every 3 hours'],
-      [720, 'Twice a day'],
-      [1440, 'Daily'],
+      [1440, 'Once a day'],
+      [2880, 'Every 2 days'],
+      [10080, 'Weekly'],
     ].map(([value, label]) =>
-      h('option', { value: String(value), selected: (board ? board.refreshEvery : 60) === value }, label)
+      h('option', { value: String(value), selected: (board ? board.refreshEvery : 1440) === value }, label)
     )
   );
   const refreshMode = h(

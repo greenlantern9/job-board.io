@@ -49,7 +49,7 @@ const STATEMENTS = [
     prompt TEXT NOT NULL DEFAULT '',
     filters TEXT NOT NULL DEFAULT '{}',
     refresh_mode TEXT NOT NULL DEFAULT 'schedule',
-    refresh_every INTEGER NOT NULL DEFAULT 60,
+    refresh_every INTEGER NOT NULL DEFAULT 1440,
     last_refresh TEXT NOT NULL DEFAULT '',
     last_error TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
@@ -153,6 +153,10 @@ const MIGRATIONS = [
   `ALTER TABLE sources ADD COLUMN empty_streak INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE boards ADD COLUMN last_curated TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE boards ADD COLUMN curate_note TEXT NOT NULL DEFAULT ''`,
+  // Scheduled refreshes are capped at one a day; boards written before the cap
+  // still carry hourly. Idempotent, so re-running it on every cold isolate is
+  // harmless.
+  `UPDATE boards SET refresh_every = 1440 WHERE refresh_every < 1440`,
 ];
 
 // Per-isolate latch. A cold isolate pays one batch; every later request skips
