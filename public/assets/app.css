@@ -620,19 +620,22 @@
   font-size: 0.9375rem;
 }
 
-/* 10px uppercase mono with wide tracking was legible only if you already knew
-   what it said. Larger text also needs less letter-spacing to read as a unit,
-   and the lighter colour was doing the size no favours. */
+/* Bumping the size twice did not fix this, because the size was not really the
+   problem: uppercase monospace with tracking reads optically smaller than its
+   own px value, and every cue here was working against legibility at once.
+   Now sans, sentence case, body scale, full-strength colour - an ordinary
+   table header. The mono micro-label device still carries the rest of the UI;
+   it just has no business labelling a dense table someone has to scan. */
 .jobs thead th {
-  padding: 0.7rem 1rem;
-  border-bottom: 1px solid var(--line-soft);
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--line);
   background: var(--surface-2);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
+  letter-spacing: -0.005em;
+  text-transform: none;
+  color: var(--text);
   text-align: left;
 }
 
