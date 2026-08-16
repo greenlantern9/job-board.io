@@ -8,6 +8,7 @@ import {
   matchesFilters,
   validateSlug,
   validateFeedUrl,
+  safeExternalUrl,
   truncate,
   normalizeCompany,
   companyMatches,
@@ -341,6 +342,53 @@ test('feed URLs must be https and must not point inward', () => {
   ]) {
     assert.throws(() => validateFeedUrl(bad), SourceError, `should reject ${bad}`);
   }
+});
+
+// --- URLs arriving inside third-party data ---------------------------------
+// Job links come from feeds, get fetched by the link checker, and get rendered
+// as anchors. Both are execution surfaces if the scheme is not constrained.
+
+test('only http(s) job URLs survive sanitising', () => {
+  assert.equal(safeExternalUrl('https://boards.greenhouse.io/x/jobs/1'), 'https://boards.greenhouse.io/x/jobs/1');
+  assert.ok(safeExternalUrl('http://example.com/job').startsWith('http://'));
+
+  for (const bad of [
+    'javascript:alert(document.cookie)',
+    'JavaScript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'file:///etc/passwd',
+    'vbscript:msgbox(1)',
+    '',
+    null,
+    undefined,
+    'not a url',
+  ]) {
+    assert.equal(safeExternalUrl(bad), '', `should reject ${String(bad).slice(0, 30)}`);
+  }
+});
+
+test('a job URL cannot point at a private address', () => {
+  // The link checker fetches these from inside the Worker, so an aggregator
+  // could otherwise use its own data as an SSRF primitive.
+  for (const bad of [
+    'http://localhost:8787/api/boards',
+    'http://127.0.0.1/',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://10.1.2.3/',
+    'http://192.168.0.1/',
+    'http://172.16.5.4/',
+    'https://build.internal/secrets',
+    'https://user:pass@example.com/job',
+  ]) {
+    assert.equal(safeExternalUrl(bad), '', `should reject ${bad}`);
+  }
+});
+
+test('a job URL cannot be aimed back at this deployment', () => {
+  assert.equal(
+    safeExternalUrl('https://job-boards.io/api/account/delete', { selfHost: 'job-boards.io' }),
+    ''
+  );
 });
 
 test('a feed URL cannot be aimed back at our own host', () => {

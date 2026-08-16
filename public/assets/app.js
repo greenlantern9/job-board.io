@@ -33,6 +33,24 @@ const clear = (node) => {
   return node;
 };
 
+/**
+ * Only ever put an http(s) URL in an href.
+ *
+ * Job links originate in third-party feeds. They are sanitised on the way into
+ * the database, but this is the last gate before one becomes a clickable link,
+ * and a `javascript:` URL reaching an anchor is a script execution rather than
+ * a broken link. Cheap to check, and it does not rely on the server having got
+ * it right.
+ */
+function safeHref(url) {
+  try {
+    const parsed = new URL(String(url), location.origin);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : '';
+  } catch {
+    return '';
+  }
+}
+
 // --- api -------------------------------------------------------------------
 
 class ApiError extends Error {
@@ -639,7 +657,7 @@ function renderList() {
             job.url
               ? h('a', {
                   class: 'btn btn--ghost btn--sm',
-                  href: job.url,
+                  href: safeHref(job.url),
                   target: '_blank',
                   rel: 'noopener noreferrer',
                   text: 'Open',
@@ -962,7 +980,7 @@ function openDrawer(id) {
       job.url
         ? h('a', {
             class: 'btn btn--primary',
-            href: job.url,
+            href: safeHref(job.url),
             target: '_blank',
             rel: 'noopener noreferrer',
             text: 'Open posting',

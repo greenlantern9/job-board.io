@@ -122,6 +122,16 @@ const CSP = [
   "form-action 'self'",
   "base-uri 'self'",
   "object-src 'none'",
+  // Nothing here embeds, frames, or spawns a worker. Naming them explicitly
+  // means default-src is not the only thing standing between a future mistake
+  // and an injected iframe or worker.
+  "frame-src 'none'",
+  "worker-src 'none'",
+  "media-src 'none'",
+  "manifest-src 'self'",
+  // Job links open in a new tab, so navigation off-site has to stay possible;
+  // everything that could exfiltrate silently is already locked to 'self'.
+  'upgrade-insecure-requests',
 ].join('; ');
 
 export function withSecurityHeaders(response) {
@@ -133,6 +143,11 @@ export function withSecurityHeaders(response) {
   headers.set('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
   headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+  // Stops another origin loading our responses as a subresource, which is the
+  // read side of the same problem frame-ancestors covers for framing.
+  headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+  // Belt and braces against a stray `window.opener` on an outbound job link.
+  headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

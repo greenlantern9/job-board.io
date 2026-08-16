@@ -1,0 +1,11 @@
+# Security contact for job-boards.io
+# https://securitytxt.org/
+
+Contact: mailto:security@job-boards.io
+Preferred-Languages: en
+Canonical: https://job-boards.io/.well-known/security.txt
+
+# Please report anything that touches account access, other people's data, or
+# the ability to make this service fetch a URL of your choosing. Give us a
+# reasonable window to fix it before publishing.
+Policy: https://github.com/greenlantern9/job-boards.io/blob/main/README.md#security-notes

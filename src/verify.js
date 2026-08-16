@@ -11,6 +11,8 @@
 // spent on the jobs most likely to be read - highest ranked first - and the
 // rest are checked on later refreshes.
 
+import { safeExternalUrl } from './sources.js';
+
 const CHECK_TIMEOUT_MS = 6000;
 const CONCURRENCY = 6;
 
@@ -44,8 +46,13 @@ function jobIdentifier(url) {
   }
 }
 
-export async function checkLink(url) {
-  if (!url || !/^https?:\/\//i.test(url)) return LINK_UNKNOWN;
+export async function checkLink(url, { selfHost } = {}) {
+  // The URL came from a third party's data, so it is checked against the same
+  // rules a user-supplied feed URL faces. Without this, any aggregator could
+  // steer the Worker at a private address simply by putting one in a listing.
+  const safe = safeExternalUrl(url, { selfHost });
+  if (!safe) return LINK_UNKNOWN;
+  url = safe;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
@@ -89,7 +96,7 @@ export async function checkLink(url) {
  * status. Order matters: callers pass the most important jobs first, because
  * the budget runs out before the list does.
  */
-export async function checkLinks(urls, { budget = 12 } = {}) {
+export async function checkLinks(urls, { budget = 12, selfHost } = {}) {
   const unique = [...new Set(urls.filter(Boolean))].slice(0, budget);
   const results = new Map();
   let cursor = 0;
@@ -97,7 +104,7 @@ export async function checkLinks(urls, { budget = 12 } = {}) {
   const worker = async () => {
     while (cursor < unique.length) {
       const url = unique[cursor++];
-      results.set(url, await checkLink(url));
+      results.set(url, await checkLink(url, { selfHost }));
     }
   };
 

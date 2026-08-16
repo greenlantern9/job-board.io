@@ -1,7 +1,7 @@
 // Board refresh: pull every enabled source, filter, persist what is new, and
 // score it.
 
-import { fetchSource, matchesFilters, normalizeCompany, ATS_KINDS } from './sources.js';
+import { fetchSource, matchesFilters, normalizeCompany, safeExternalUrl, ATS_KINDS } from './sources.js';
 import { boardQuery } from './curate.js';
 import { heuristicScore } from './rank.js';
 import { checkLinks, LINK_DEAD, LINK_LIVE } from './verify.js';
@@ -143,6 +143,11 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
       // The same opening genuinely appears on several aggregators, and some
       // feeds repeat it under different ids of their own. Identity is the role
       // at the employer, not whatever key the source happened to mint.
+      // Normalise the link the moment it enters the system, so a javascript:
+      // or private-network URL from a feed is neutralised once rather than at
+      // every place that later reads it.
+      job.url = safeExternalUrl(job.url, { selfHost });
+
       const identity = `${job.title.trim().toLowerCase().replace(/\s+/g, ' ')}|${normalizeCompany(job.company)}`;
       if (seenIdentities.has(identity)) {
         summary.duplicates++;
@@ -210,7 +215,7 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
     if (needChecking.length > 0) {
       const statuses = await checkLinks(
         needChecking.map((entry) => entry.job.url),
-        { budget: LINK_CHECK_BUDGET }
+        { budget: LINK_CHECK_BUDGET, selfHost }
       );
       for (const entry of needChecking) {
         const status = statuses.get(entry.job.url);

@@ -213,6 +213,37 @@ export function validateFeedUrl(raw, { selfHost } = {}) {
   return url.toString();
 }
 
+/**
+ * Whether a URL that arrived inside third-party data is safe to fetch or to
+ * put in an href.
+ *
+ * Feed URLs are validated when someone adds a source, but the *job* URLs those
+ * feeds return were not - and they reach two dangerous places: the link checker
+ * fetches them from inside the Worker, and the client renders them as links.
+ * That made an aggregator's data an SSRF vector and a javascript: URL an
+ * execution vector, neither of which needs the feed to be malicious, only
+ * compromised.
+ *
+ * Returns the normalized URL, or '' when it must not be used at all. Unlike
+ * validateFeedUrl this does not throw: a bad link on one posting should drop
+ * that link, not abort the whole refresh.
+ */
+export function safeExternalUrl(raw, { selfHost } = {}) {
+  let url;
+  try {
+    url = new URL(String(raw || '').trim());
+  } catch {
+    return '';
+  }
+  // The only two schemes a job posting can legitimately live behind. This is
+  // what keeps javascript:, data:, vbscript: and file: out of an href.
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
+  if (BLOCKED_HOSTS.test(url.hostname)) return '';
+  if (selfHost && url.hostname === selfHost) return '';
+  if (url.username || url.password) return '';
+  return url.toString();
+}
+
 // --- connectors ------------------------------------------------------------
 
 async function fetchGreenhouse(slug) {
