@@ -746,6 +746,10 @@ export function _compileQuery(identifier) {
   return compileTerms(queryTerms(identifier));
 }
 
+// Declared before matchesFilters uses it; function declarations hoist, but the
+// dependency is worth stating since the two live far apart in this file.
+export { compileTerms as _compileTerms };
+
 export async function fetchSource(source, options = {}) {
   switch (source.kind) {
     case 'greenhouse':
@@ -812,6 +816,18 @@ export function companyMatches(company, list) {
  */
 export function matchesFilters(job, filters = {}) {
   const haystack = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
+
+  // Relevance gate for sources that cannot search their own index.
+  //
+  // Company boards return every opening the employer has - 809 at one company
+  // alone - and previously all of them were stored, because only aggregators
+  // were relevance-checked. That is why a board about program management filled
+  // up with warehouse and sales roles. `query` is the board's derived search,
+  // passed in by the caller.
+  if (filters.query) {
+    const matchers = _compileQuery(filters.query);
+    if (matchers.length > 0 && !matchesQuery(job.title, job.description, matchers)) return false;
+  }
 
   const exclude = terms(filters.exclude);
   if (exclude.some((term) => haystack.includes(term))) return false;

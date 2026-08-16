@@ -17,6 +17,8 @@ import { suggestCompanies } from './suggest.js';
 import { queryAll, queryOne, run, nowIso, parseJson } from './db.js';
 import { newId } from './crypto.js';
 import { fetchSource, AGGREGATOR_KINDS, ATS_KINDS } from './sources.js';
+import { extractRolePhrases } from './intent.js';
+import { SEED_COMPANIES, SEED_LIMIT } from './seeds.js';
 
 /** Enough breadth to fill a board without spending the whole refresh budget. */
 export const TARGET_SOURCES = 12;
@@ -51,15 +53,20 @@ export function boardQuery(board) {
   const filters = board.filters || {};
   if (filters.keywords && filters.keywords.trim()) return filters.keywords.trim().slice(0, 120);
 
-  // No explicit keywords: pull the distinctive words out of the prompt. Broad
-  // beats narrow here, because the ranking is what sorts the result - the
-  // query only has to avoid pulling the entire internet.
+  // Role phrases first. "technical program manager" kept whole is a completely
+  // different search from those three words scattered, which each match on
+  // their own and drag in store managers.
+  const phrases = extractRolePhrases(board.prompt);
+
   const words = String(board.prompt || '')
     .toLowerCase()
     .split(/[^a-z0-9+#.]+/)
-    .filter((w) => w.length > 2 && !QUERY_STOPWORDS.has(w));
+    .filter((w) => w.length > 2 && !QUERY_STOPWORDS.has(w))
+    // Words already carried by a phrase would only dilute it.
+    .filter((w) => !phrases.some((p) => p.split(' ').includes(w)));
 
-  return [...new Set(words)].slice(0, 6).join(', ');
+  const terms = [...phrases, ...new Set(words)];
+  return terms.slice(0, 6).join(', ');
 }
 
 /**
@@ -215,6 +222,17 @@ export async function curateBoard(env, board, { selfHost, force = false } = {}) 
     // run discovery still pulls from thousands of companies.
     summary.added += await ensureAggregators(env, board, existing);
     existing = await queryAll(env, 'SELECT * FROM sources WHERE board_id = ?', board.id);
+
+    // Seed company boards. These are where senior and specialised roles
+    // actually get posted, and unlike discovery they need no API key - so the
+    // free path is not left with aggregators alone.
+    const haveCompany = existing.filter((s) => !AGGREGATOR_KINDS.includes(s.kind));
+    if (haveCompany.length === 0) {
+      for (const seed of SEED_COMPANIES.slice(0, SEED_LIMIT)) {
+        if (await insertSource(env, board, { ...seed, auto: 1 })) summary.added++;
+      }
+      existing = await queryAll(env, 'SELECT * FROM sources WHERE board_id = ?', board.id);
+    }
 
     const named = await connectNamedCompanies(env, board, existing, selfHost);
     summary.added += named.added;

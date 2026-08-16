@@ -2,6 +2,7 @@
 // score it.
 
 import { fetchSource, matchesFilters, normalizeCompany, ATS_KINDS } from './sources.js';
+import { boardQuery } from './curate.js';
 import { scoreJobs } from './scoring.js';
 import { queryAll, run, nowIso, parseJson } from './db.js';
 import { newId } from './crypto.js';
@@ -35,6 +36,15 @@ function isTooOld(job) {
 
 export function boardWithFilters(row) {
   return { ...row, filters: parseJson(row.filters, {}) };
+}
+
+/**
+ * Filters plus the board's derived search string, so every source is held to
+ * the same relevance bar. Without this, per-company boards bypass the query
+ * entirely and dump their whole listing set onto the board.
+ */
+function filtersWithQuery(board) {
+  return { ...(board.filters || {}), query: boardQuery(board) };
 }
 
 /**
@@ -86,6 +96,7 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
     existing.set(row.external_id, row.id);
   }
 
+  const activeFilters = filtersWithQuery(board);
   const toInsert = [];
   const toUpdate = [];
   const seen = new Set();
@@ -130,7 +141,7 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
       }
       seenIdentities.add(identity);
 
-      if (isTooOld(job) || !matchesFilters(job, board.filters)) {
+      if (isTooOld(job) || !matchesFilters(job, activeFilters)) {
         summary.filteredOut++;
         continue;
       }

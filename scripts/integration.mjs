@@ -173,15 +173,28 @@ section('sources');
   check('a live Greenhouse board can be reached', probe.payload.ok === true, probe.payload);
   if (probe.payload.ok) console.log(`       -> ${probe.payload.count} open roles`);
 
+  // Seed company boards are attached on creation, so a board is useful without
+  // an API key and without anyone connecting anything.
+  const seeded = await call(`/api/sources?boardId=${boardId}`);
+  const sources = seeded.payload.sources || [];
+  check('company boards are seeded automatically', sources.length > 0, seeded.payload);
+  check(
+    'seeding brings in per-company boards, not just aggregators',
+    sources.some((s) => ['greenhouse', 'lever', 'ashby', 'smartrecruiters'].includes(s.kind)),
+    sources.map((s) => s.kind)
+  );
+  check('seeded sources are marked as automatic', sources.every((s) => s.auto !== false));
+
+  // Manual add uses a company the seed list does not already cover.
   const added = await call('/api/sources/create', {
     method: 'POST',
-    body: { boardId, kind: 'greenhouse', identifier: 'gitlab', label: 'GitLab' },
+    body: { boardId, kind: 'smartrecruiters', identifier: 'Visa', label: 'Visa' },
   });
-  check('source added', added.status === 200, added.payload);
+  check('a source can still be added by hand', added.status === 200, added.payload);
 
   const dupe = await call('/api/sources/create', {
     method: 'POST',
-    body: { boardId, kind: 'greenhouse', identifier: 'gitlab' },
+    body: { boardId, kind: 'smartrecruiters', identifier: 'Visa' },
   });
   check('a duplicate source is refused', dupe.status === 400, dupe.payload);
 }

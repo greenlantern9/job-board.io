@@ -76,6 +76,81 @@ export function jobAgeDays(job) {
   return age;
 }
 
+// --- criteria extraction ---------------------------------------------------
+// Shared by the ranking and by the query sent to sources, so a board is scored
+// against exactly the terms it searched for.
+
+const ROLE_NOUNS =
+  'engineer|manager|developer|designer|analyst|scientist|architect|director|lead|specialist|' +
+  'consultant|administrator|technician|recruiter|marketer|writer|producer|strategist|coordinator|' +
+  'associate|executive|officer|partner|accountant|nurse|physician|therapist|teacher|professor|' +
+  'operator|planner|buyer|controller|auditor|advisor|agent|representative|supervisor|superintendent|' +
+  'roles|role|positions|position|jobs|job';
+
+const ROLE_RE = new RegExp(String.raw`\b((?:[a-z][a-z+#.\-]*\s+){0,3}(?:${ROLE_NOUNS}))\b`, 'gi');
+const PHRASE_TAIL = /\b(roles?|positions?|jobs?)$/;
+const PHRASE_HEAD =
+  /^(a|an|the|any|some|more|new|other|at|in|for|of|and|or|to|my|i|im|want|wants|looking|seeking|find|me|least|base|about)\s+/;
+
+/**
+ * Job titles named in the sentence, longest first.
+ *
+ * "technical program manager" kept whole is a completely different search from
+ * those three words treated separately - the latter matches any store manager.
+ */
+export function extractRolePhrases(prompt) {
+  const text = String(prompt || '').toLowerCase();
+  const found = new Set();
+
+  for (const match of text.matchAll(ROLE_RE)) {
+    let phrase = match[1].replace(/\s+/g, ' ').trim();
+    let previous;
+    do {
+      previous = phrase;
+      phrase = phrase.replace(PHRASE_HEAD, '');
+    } while (phrase !== previous);
+    phrase = phrase.replace(PHRASE_TAIL, '').trim();
+    if (phrase.includes(' ')) found.add(phrase);
+  }
+
+  return [...found].sort((a, b) => b.split(' ').length - a.split(' ').length).slice(0, 3);
+}
+
+/**
+ * Words too generic, or too much like scaffolding, to count as criteria.
+ *
+ * The salary figure and its units belong here: "at least $250k base" was being
+ * scored as three matchable terms, so a posting that happened to contain the
+ * word "base" collected criteria credit. That is how a listing called "Sales
+ * Jedi" reached 73 out of 100 on a search for a program manager.
+ */
+const CRITERIA_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'you', 'our', 'are', 'will', 'that', 'this', 'have', 'from',
+  'who', 'want', 'looking', 'work', 'working', 'team', 'role', 'roles', 'job', 'jobs', 'position',
+  'positions', 'company', 'companies', 'experience', 'years', 'strong', 'good', 'great', 'able',
+  'help', 'build', 'building', 'across', 'into', 'their', 'your', 'about', 'more', 'than', 'well',
+  'also', 'not', 'least', 'base', 'salary', 'pay', 'comp', 'compensation', 'minimum', 'min',
+  'ideally', 'preferably', 'prefer', 'interested', 'seeking', 'find', 'new', 'some', 'any',
+  'remote', 'hybrid', 'onsite', 'office', 'full', 'time', 'part', 'contract', 'permanent',
+]);
+
+/** True for tokens that are money or numbers rather than criteria. */
+const IS_NUMERIC = /^\d+(\.\d+)?k?$/;
+
+export function criteriaTerms(prompt) {
+  const phrases = extractRolePhrases(prompt);
+  const inPhrase = new Set(phrases.flatMap((p) => p.split(' ')));
+
+  const singles = String(prompt || '')
+    .toLowerCase()
+    .split(/[^a-z0-9+#.]+/)
+    .filter(
+      (w) => w.length > 2 && !CRITERIA_STOPWORDS.has(w) && !IS_NUMERIC.has?.(w) && !IS_NUMERIC.test(w) && !inPhrase.has(w)
+    );
+
+  return { phrases, words: [...new Set(singles)] };
+}
+
 function words(text) {
   return String(text || '')
     .toLowerCase()
@@ -102,28 +177,55 @@ export function heuristicScore(job, { prompt = '', filters = {} } = {}) {
   const reasons = [];
   let score = 40; // neutral baseline
 
-  // 1. Criteria overlap (up to +35). A term in the title counts twice - it is a
-  //    far stronger signal than the same word buried in a benefits list.
-  const promptTerms = [...new Set(words(prompt).filter((w) => !STOPWORDS.has(w)))];
-  if (promptTerms.length > 0) {
+  // 1. The role itself (up to +40), which has to dominate.
+  //
+  //    Averaging a title match in with a dozen loose words let irrelevant
+  //    postings accumulate credit from incidental vocabulary while an exact
+  //    role match got diluted. A named role in the title is now worth more than
+  //    every other criteria signal combined, and a job that matches none of the
+  //    stated role is pushed below the baseline rather than left at it.
+  const { phrases, words: criteriaWords } = criteriaTerms(prompt);
+
+  if (phrases.length > 0) {
+    const best = phrases.find((phrase) => {
+      const parts = phrase.split(' ');
+      return parts.every((w) => titleText.includes(w));
+    });
+    const inBody = phrases.find((phrase) => phrase.split(' ').every((w) => haystack.includes(w)));
+
+    if (best) {
+      score += 40;
+      reasons.unshift(`title matches "${best}"`);
+    } else if (inBody) {
+      score += 12;
+      reasons.push('role appears in the description, not the title');
+    } else {
+      score -= 20;
+      reasons.push('not the role you described');
+    }
+  }
+
+  // 2. Remaining criteria words (up to +15). Supporting evidence only - skills
+  //    and domain terms that refine an already-plausible match.
+  if (criteriaWords.length > 0) {
     let hits = 0;
     let titleHits = 0;
-    for (const term of promptTerms) {
+    for (const term of criteriaWords) {
       if (haystack.includes(term)) {
         hits++;
         if (titleText.includes(term)) titleHits++;
       }
     }
-    const ratio = Math.min(1, (hits + titleHits) / Math.max(4, promptTerms.length * 0.6));
-    score += Math.round(ratio * 35);
-    reasons.push(
-      hits > 0
-        ? `matches ${hits}/${promptTerms.length} of your criteria terms`
-        : 'no overlap with your stated criteria'
-    );
+    if (hits > 0) {
+      const ratio = Math.min(1, (hits + titleHits) / Math.max(3, criteriaWords.length * 0.7));
+      score += Math.round(ratio * 15);
+      reasons.push(`matches ${hits}/${criteriaWords.length} of your other terms`);
+    } else if (phrases.length === 0) {
+      reasons.push('no overlap with your stated criteria');
+    }
   }
 
-  // 2. Required keyword in the title (up to +10).
+  // 3. Required keyword in the title (up to +10).
   const required = String(filters.keywords || '')
     .split(',')
     .map((t) => t.trim().toLowerCase())

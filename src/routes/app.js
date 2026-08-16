@@ -11,6 +11,7 @@ import { SOURCE_KINDS, validateSlug, validateFeedUrl, fetchSource, SourceError }
 import { refreshBoard, scoreUnscored, boardWithFilters, MIN_REFRESH_MINUTES } from '../ingest.js';
 import { suggestCompanies } from '../suggest.js';
 import { curateBoard } from '../curate.js';
+import { applyIntent } from '../intent.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
 
@@ -23,7 +24,7 @@ async function ownedBoard(env, userId, boardId) {
   return queryOne(env, 'SELECT * FROM boards WHERE id = ? AND user_id = ?', boardId, userId);
 }
 
-function cleanFilters(input) {
+function cleanFilters(input, prompt = '') {
   const raw = input && typeof input === 'object' ? input : {};
   const text = (value, max = 400) => String(value ?? '').slice(0, max).trim();
   const filters = {
@@ -49,7 +50,11 @@ function cleanFilters(input) {
   if (Number.isInteger(maxAgeDays) && maxAgeDays > 0 && maxAgeDays <= 365) {
     filters.maxAgeDays = maxAgeDays;
   }
-  return filters;
+
+  // Fill the gaps from the sentence. Someone who wrote "$250k" should get a
+  // salary floor without having to find the field under Advanced - that number
+  // was doing nothing at all before.
+  return applyIntent(filters, prompt).filters;
 }
 
 /**
@@ -193,7 +198,7 @@ async function createBoard(request, env, ctx) {
     ctx.user.id,
     name,
     String(body.prompt || '').slice(0, 4000),
-    JSON.stringify(cleanFilters(body.filters)),
+    JSON.stringify(cleanFilters(body.filters, String(body.prompt || ''))),
     body.refreshMode === 'manual' ? 'manual' : 'schedule',
     clampRefreshInterval(body.refreshEvery),
     now,
@@ -231,7 +236,9 @@ async function updateBoard(request, env, ctx) {
      WHERE id = ? AND user_id = ?`,
     name,
     String(body.prompt ?? board.prompt).slice(0, 4000),
-    JSON.stringify(cleanFilters(body.filters ?? parseJson(board.filters, {}))),
+    JSON.stringify(
+      cleanFilters(body.filters ?? parseJson(board.filters, {}), String(body.prompt ?? board.prompt ?? ''))
+    ),
     body.refreshMode === 'manual' ? 'manual' : 'schedule',
     clampRefreshInterval(body.refreshEvery ?? board.refresh_every),
     nowIso(),
