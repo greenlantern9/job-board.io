@@ -107,15 +107,23 @@ export async function verifyTotp(secretBase32, code, { atMs = Date.now(), window
   return ok;
 }
 
-export function otpauthUri({ issuer, account, secret }) {
-  const label = encodeURIComponent(`${issuer}:${account}`);
-  const params = new URLSearchParams({
-    secret,
-    issuer,
-    algorithm: 'SHA1',
-    digits: '6',
-    period: '30',
-  });
+/**
+ * @param compactLabel  Drop the "issuer:" prefix from the label. The issuer
+ *                      parameter still carries it, so apps group the entry
+ *                      correctly either way - this only shortens the URI.
+ * @param omitDefaults  Drop algorithm, digits and period. All three are the
+ *                      RFC 6238 defaults that every authenticator assumes when
+ *                      absent; stating them is belt and braces, not a
+ *                      requirement.
+ */
+export function otpauthUri({ issuer, account, secret, compactLabel = false, omitDefaults = false }) {
+  const label = encodeURIComponent(compactLabel ? account : `${issuer}:${account}`);
+  const params = new URLSearchParams({ secret, issuer });
+  if (!omitDefaults) {
+    params.set('algorithm', 'SHA1');
+    params.set('digits', '6');
+    params.set('period', '30');
+  }
   return `otpauth://totp/${label}?${params.toString()}`;
 }
 

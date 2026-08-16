@@ -1770,8 +1770,22 @@ async function renderAccount(container) {
 
     if (!user.mfaEnabled) {
       const start = h('button', { class: 'btn btn--primary', text: 'Turn on two-factor' });
-      start.addEventListener('click', busy(start, 'Preparing…', () => startMfaFlow(container)));
-      mfaPanel.append(start);
+      // A missing server secret is the operator's problem to fix, so show what
+      // is actually wrong instead of a generic failure toast that names nothing.
+      const problem = h('div', { class: 'notice notice--warn', hidden: true });
+      start.addEventListener(
+        'click',
+        busy(start, 'Preparing…', async () => {
+          try {
+            problem.hidden = true;
+            await startMfaFlow(container);
+          } catch (err) {
+            problem.textContent = err.message;
+            problem.hidden = false;
+          }
+        })
+      );
+      mfaPanel.append(problem, start);
       return;
     }
 
@@ -1933,11 +1947,15 @@ async function startMfaFlow(accountContainer) {
     h('p', {
       class: 'muted',
       style: 'font-size:.9375rem;margin-bottom:1rem',
-      text: 'Scan this with Google Authenticator, 1Password, Authy, or any TOTP app.',
+      text: qrSvg
+        ? 'Scan this with Google Authenticator, 1Password, Authy, or any TOTP app.'
+        : 'Enter this key in Google Authenticator, 1Password, Authy, or any TOTP app.',
     }),
-    // Server-generated SVG from our own encoder - not user input.
-    h('div', { class: 'qr', html: qrSvg }),
-    h('p', { class: 'label', text: "Can't scan it? Enter this key" }),
+    // Server-generated SVG from our own encoder - not user input. Absent only
+    // when no shortening got the URI inside a scannable code, in which case
+    // manual entry below is the whole flow rather than a fallback.
+    qrSvg ? h('div', { class: 'qr', html: qrSvg }) : null,
+    h('p', { class: 'label', text: qrSvg ? "Can't scan it? Enter this key" : 'Setup key' }),
     h('div', { class: 'secret', text: secret }),
     h('p', {
       class: 'hint',

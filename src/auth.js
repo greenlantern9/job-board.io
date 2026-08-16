@@ -234,12 +234,22 @@ export async function purgeExpired(env) {
 
 // --- TOTP secret storage ---------------------------------------------------
 
+export function mfaConfigured(env) {
+  return Boolean(env.TOTP_ENC_KEY);
+}
+
 function encKey(env) {
   const key = env.TOTP_ENC_KEY;
   if (!key) {
     // Fail closed. Enrolling MFA against a missing key would write secrets we
     // could never decrypt, and silently disabling MFA is worse than an error.
-    throw new Error('TOTP_ENC_KEY secret is not configured');
+    //
+    // Tagged so the route can say which secret is missing. Left untagged this
+    // surfaced as the generic "something went wrong", which tells the one
+    // person who can fix it precisely nothing.
+    const error = new Error('TOTP_ENC_KEY secret is not configured');
+    error.code = 'no_totp_key';
+    throw error;
   }
   return key;
 }

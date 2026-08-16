@@ -33,6 +33,7 @@ import {
   disableMfa,
   publicUser,
   passwordPepper,
+  mfaConfigured,
   SESSION_TTL_MS,
 } from '../auth.js';
 import { generateSecret, verifyTotp, otpauthUri, formatSecretForDisplay } from '../totp.js';
@@ -279,16 +280,49 @@ async function changePassword(request, env, ctx) {
   return json({ ok: true, otherSessionsSignedOut: true });
 }
 
+/**
+ * Build a scannable QR, shortening the URI if the encoder cannot fit it.
+ *
+ * The encoder tops out at version 10, roughly 213 bytes, and a long email
+ * address pushes an otpauth URI past that - which failed enrollment outright
+ * for anyone with a long address. Each step drops something an authenticator
+ * can do without: the issuer prefix is redundant with the issuer parameter,
+ * and SHA1/6/30 are the RFC defaults every app assumes.
+ */
+function qrForOtpauth(email, secret) {
+  const variants = [
+    otpauthUri({ issuer: 'job-boards.io', account: email, secret }),
+    otpauthUri({ issuer: 'job-boards.io', account: email, secret, compactLabel: true }),
+    otpauthUri({ issuer: 'job-boards.io', account: email, secret, compactLabel: true, omitDefaults: true }),
+  ];
+
+  for (const uri of variants) {
+    try {
+      return { uri, qrSvg: qrToSvg(uri, { moduleSize: 5, margin: 3 }) };
+    } catch {
+      // Too large for the encoder; try a shorter form.
+    }
+  }
+  // Manual entry still works - the secret is shown alongside the code.
+  return { uri: variants[variants.length - 1], qrSvg: '' };
+}
+
 async function startMfa(request, env, ctx) {
+  if (!mfaConfigured(env)) {
+    return json(
+      {
+        error:
+          'Two-factor is not available yet: this deployment has no TOTP_ENC_KEY secret. Add it in the Cloudflare dashboard under Workers, Settings, Variables and Secrets, then try again.',
+        code: 'no_totp_key',
+      },
+      { status: 503 }
+    );
+  }
+
   const secret = generateSecret();
   await storeTotpSecret(env, ctx.user.id, secret, { pending: true });
-  const uri = otpauthUri({ issuer: 'job-boards.io', account: ctx.user.email, secret });
-  return json({
-    ok: true,
-    secret: formatSecretForDisplay(secret),
-    uri,
-    qrSvg: qrToSvg(uri, { moduleSize: 5, margin: 3 }),
-  });
+  const { uri, qrSvg } = qrForOtpauth(ctx.user.email, secret);
+  return json({ ok: true, secret: formatSecretForDisplay(secret), uri, qrSvg });
 }
 
 async function confirmMfa(request, env, ctx) {
