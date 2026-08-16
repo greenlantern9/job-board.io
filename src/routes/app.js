@@ -8,7 +8,15 @@ import { json, badRequest, notFound, readJson, tooMany, allowRate } from '../htt
 import { queryAll, queryOne, run, nowIso, parseJson } from '../db.js';
 import { newId } from '../crypto.js';
 import { SOURCE_KINDS, validateSlug, validateFeedUrl, fetchSource, SourceError } from '../sources.js';
-import { refreshBoard, scoreUnscored, boardWithFilters, MIN_REFRESH_MINUTES } from '../ingest.js';
+import {
+  refreshBoard,
+  scoreUnscored,
+  boardWithFilters,
+  activeJobCount,
+  MIN_REFRESH_MINUTES,
+  ADD_BATCH_SIZE,
+  MAX_ACTIVE_JOBS,
+} from '../ingest.js';
 import { suggestCompanies } from '../suggest.js';
 import { curateBoard } from '../curate.js';
 import { applyIntent } from '../intent.js';
@@ -149,10 +157,57 @@ async function listBoards(request, env, ctx) {
     byBoard[row.board_id][row.status] = row.n;
   }
   return json({
-    boards: rows.map((row) => ({ ...boardToPublic(row), counts: byBoard[row.id] || {} })),
+    boards: rows.map((row) => {
+      const counts = byBoard[row.id] || {};
+      // Rejected and archived do not occupy a slot, so the capacity the user
+      // sees has to exclude them or the number would not match the rule.
+      const active = Object.entries(counts)
+        .filter(([status]) => status !== 'rejected' && status !== 'archived')
+        .reduce((sum, [, n]) => sum + n, 0);
+      return { ...boardToPublic(row), counts, active, maxActive: MAX_ACTIVE_JOBS };
+    }),
+    addBatchSize: ADD_BATCH_SIZE,
+    maxActive: MAX_ACTIVE_JOBS,
     // Sent so the client can disable "New board" at the limit rather than
     // letting someone fill in a form that is going to be rejected.
     maxBoards: MAX_BOARDS,
+  });
+}
+
+/**
+ * "Add 10 jobs" - pull the next batch on demand.
+ *
+ * Deliberately not limited to once a day. The daily refresh is the rhythm, but
+ * someone working through a board should not have to wait until tomorrow for
+ * more; the real limits are the fifty-job ceiling and the rate limiter, both of
+ * which bound this without making it feel arbitrary.
+ */
+async function addJobs(request, env, ctx) {
+  const body = await readJson(request);
+  const board = await ownedBoard(env, ctx.user.id, body.id);
+  if (!board) return notFound('Board not found.');
+
+  const active = await activeJobCount(env, board.id);
+  if (active >= MAX_ACTIVE_JOBS) {
+    return json({
+      ok: false,
+      boardFull: true,
+      active,
+      max: MAX_ACTIVE_JOBS,
+      message: `This board is holding its maximum of ${MAX_ACTIVE_JOBS} jobs. Reject or archive a few to make room.`,
+    });
+  }
+
+  if (!(await allowRate(env.API_RATE_LIMIT, `addjobs:${ctx.user.id}`))) {
+    return tooMany('Give it a minute between batches.');
+  }
+
+  const summary = await refreshBoard(env, board, { selfHost: new URL(request.url).hostname });
+  return json({
+    ok: true,
+    ...summary,
+    active: await activeJobCount(env, board.id),
+    max: MAX_ACTIVE_JOBS,
   });
 }
 
@@ -791,6 +846,7 @@ export const APP_ROUTES = {
   'POST /api/boards/refresh': { handler: refreshNow },
   'POST /api/boards/rescore': { handler: rescoreBoard },
   'POST /api/boards/curate': { handler: curateNow },
+  'POST /api/boards/add-jobs': { handler: addJobs },
 
   'GET /api/sources': { handler: listSources },
   'POST /api/sources/create': { handler: createSource },

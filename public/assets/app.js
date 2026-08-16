@@ -98,6 +98,8 @@ const state = {
   pollTimer: null,
   provisionTimer: null,
   maxBoards: 3,
+  maxActive: 50,
+  addBatchSize: 10,
   mfaRecoveryMode: false,
 };
 
@@ -388,9 +390,11 @@ async function enterApp(user) {
 }
 
 async function loadBoards({ keepSelection = true } = {}) {
-  const { boards, maxBoards } = await api('/api/boards');
+  const { boards, maxBoards, maxActive, addBatchSize } = await api('/api/boards');
   state.boards = boards;
   if (maxBoards) state.maxBoards = maxBoards;
+  if (maxActive) state.maxActive = maxActive;
+  if (addBatchSize) state.addBatchSize = addBatchSize;
 
   if (boards.length === 0) {
     state.boardId = null;
@@ -472,9 +476,15 @@ function render() {
   if (!board) return renderEmptyShell();
 
   $('#board-name').textContent = board.name;
-  $('#board-stamp').textContent = board.lastRefresh
-    ? `synced ${relativeTime(board.lastRefresh)}`
-    : 'never synced';
+
+  // Capacity is part of the model now, so it belongs next to the board name
+  // rather than being something you infer from a failed action.
+  const listed = state.boards.find((b) => b.id === state.boardId);
+  const active = listed ? listed.active : state.jobs.filter((j) => j.status !== 'rejected' && j.status !== 'archived').length;
+  const stamp = board.lastRefresh ? `synced ${relativeTime(board.lastRefresh)}` : 'never synced';
+  $('#board-stamp').textContent = `${active} of ${state.maxActive} jobs · ${stamp}`;
+
+  renderAddJobs(active);
 
   if (board.lastError) banner(board.lastError, 'warn');
 
@@ -733,6 +743,50 @@ function renderNoResults() {
       } })
     )
   );
+}
+
+/**
+ * The "Add N jobs" control, alongside the capacity readout.
+ *
+ * Disabled at the ceiling rather than hidden, with the reason on the button -
+ * a control that vanishes leaves someone wondering where it went, and the way
+ * to get it back (reject or archive something) is not obvious otherwise.
+ */
+function renderAddJobs(active) {
+  const host = $('#add-jobs-host');
+  if (!host) return;
+  clear(host);
+
+  const full = active >= state.maxActive;
+  const btn = h('button', {
+    class: `btn btn--sm ${full ? 'btn--ghost' : 'btn--primary'}`,
+    text: full ? 'Board full' : `Add ${state.addBatchSize} jobs`,
+    title: full
+      ? `This board holds ${state.maxActive} jobs. Reject or archive a few to make room — those do not count toward the limit.`
+      : `Pull the next ${state.addBatchSize}, ranked against everything already here.`,
+    disabled: full,
+  });
+
+  btn.addEventListener(
+    'click',
+    busy(btn, 'Finding…', async () => {
+      const res = await api('/api/boards/add-jobs', { method: 'POST', body: { id: state.boardId } });
+      if (!res.ok) {
+        toast(res.message || 'Could not add jobs', 'error');
+        return;
+      }
+      await loadJobs();
+      await loadBoards();
+      if (res.added > 0) {
+        const passed = res.passedOver ? `, ${res.passedOver} ranked lower` : '';
+        toast(`Added ${res.added}${passed}`);
+      } else {
+        toast('Nothing new cleared your criteria this time');
+      }
+    })
+  );
+
+  host.append(btn);
 }
 
 /** Poll while a freshly created board is being provisioned server-side. */

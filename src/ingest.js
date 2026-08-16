@@ -12,8 +12,12 @@ import { checkLinks, LINK_DEAD, LINK_LIVE } from './verify.js';
  * left to spend on checking - highest-ranked candidates first.
  */
 const LINK_CHECK_BUDGET = 12;
+
+/** Extra candidates carried past the slot count so a dead link does not cost a
+ *  slot that a live posting could have taken. */
+const LINK_CHECK_OVERSHOOT = 5;
 import { scoreJobs } from './scoring.js';
-import { queryAll, run, nowIso, parseJson } from './db.js';
+import { queryAll, queryOne, run, nowIso, parseJson } from './db.js';
 import { newId } from './crypto.js';
 
 /** Jobs older than this are dropped at ingest - they are almost always filled. */
@@ -36,6 +40,37 @@ export const IN_CHUNK = 90;
 
 /** One scheduled refresh a day. See clampRefreshInterval in routes/app.js. */
 export const MIN_REFRESH_MINUTES = 1440;
+
+/**
+ * A board takes on ten jobs at a time and holds fifty.
+ *
+ * Dumping several hundred listings on someone is the problem this product
+ * exists to solve, so a refresh contributes a shortlist rather than a dump:
+ * every candidate is ranked and only the best of them land. The rest are not
+ * stored, and the next run re-ranks whatever is available then - which also
+ * means a job passed over today can win tomorrow if nothing better turned up.
+ */
+export const ADD_BATCH_SIZE = 10;
+export const MAX_ACTIVE_JOBS = 50;
+
+/**
+ * Statuses that do not consume a slot.
+ *
+ * Rejecting or archiving is the user saying "not this one", and that decision
+ * should free the space rather than permanently spend it - otherwise triaging a
+ * board would gradually fill it with things already dismissed.
+ */
+const INACTIVE_STATUSES = ['rejected', 'archived'];
+
+/** Jobs currently occupying a slot on the board. */
+export async function activeJobCount(env, boardId) {
+  const row = await queryOne(
+    env,
+    `SELECT COUNT(*) AS n FROM jobs WHERE board_id = ? AND status NOT IN ('rejected', 'archived')`,
+    boardId
+  );
+  return (row && row.n) || 0;
+}
 
 function isTooOld(job) {
   if (!job.postedAt) return false;
@@ -61,7 +96,7 @@ function filtersWithQuery(board) {
  * source row and the others still run, because one dead company page should
  * not stop the whole board from updating.
  */
-export async function refreshBoard(env, boardRow, { selfHost } = {}) {
+export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BATCH_SIZE } = {}) {
   const board = boardWithFilters(boardRow);
   const sources = await queryAll(
     env,
@@ -199,6 +234,41 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
   // their links point at the aggregator's own page, so a 200 proves the
   // aggregator still lists it, not that the employer is still hiring. Those
   // stay "unknown" rather than claiming more than we know.
+  // Rank every candidate and keep only the best that fit the free slots.
+  //
+  // This is what makes a refresh a shortlist rather than a dump. Candidates
+  // that miss the cut are simply not stored - the next run re-ranks whatever is
+  // available then, so today's near-miss can win tomorrow if nothing better
+  // turns up. A few extra are carried through link checking so that a dead one
+  // does not cost a slot.
+  const activeBefore = await activeJobCount(env, board.id);
+  const slots = Math.max(0, Math.min(batchSize, MAX_ACTIVE_JOBS - activeBefore));
+  summary.activeBefore = activeBefore;
+  summary.slots = slots;
+  summary.candidates = toInsert.length;
+
+  if (slots === 0 && toInsert.length > 0) {
+    summary.boardFull = true;
+    summary.warnings.push(
+      `This board is holding its maximum of ${MAX_ACTIVE_JOBS} jobs. Reject or archive some to make room.`
+    );
+    toInsert.length = 0;
+  } else if (toInsert.length > slots) {
+    const ranked = toInsert
+      .map((entry) => ({
+        entry,
+        score: heuristicScore(entry.job, { prompt: board.prompt, filters: activeFilters }).score,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .map(({ entry }) => entry);
+
+    summary.passedOver = toInsert.length - slots;
+    toInsert.length = 0;
+    // Overshoot deliberately: link checking drops some, and trimming to exactly
+    // `slots` afterwards means a dead posting does not silently cost a slot.
+    toInsert.push(...ranked.slice(0, slots + LINK_CHECK_OVERSHOOT));
+  }
+
   if (toInsert.length > 0) {
     for (const entry of toInsert) {
       if (entry.job.direct) entry.linkStatus = LINK_LIVE;
@@ -227,7 +297,8 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
     const alive = toInsert.filter((entry) => entry.linkStatus !== LINK_DEAD);
     summary.deadOnArrival = before - alive.length;
     toInsert.length = 0;
-    toInsert.push(...alive);
+    // Trim to the slot count only now, after the dead have been removed.
+    toInsert.push(...alive.slice(0, slots));
   }
 
   // Refresh the facts on jobs we already track, but never touch status, notes,
