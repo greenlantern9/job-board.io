@@ -1521,6 +1521,34 @@ async function renderSources(container) {
           text: res.message,
         })
       );
+
+      // When it cannot see the key, show what it *can* see. "The secret exists
+      // in the dashboard" and "the Worker can read it" are different claims,
+      // and this is the only thing that tells them apart.
+      if (res.bindings) {
+        const { present, allNames } = res.bindings;
+        const rows = Object.entries(present).map(([name, ok]) =>
+          h(
+            'div',
+            { class: 'list-row' },
+            h('span', { class: `dot${ok ? ' dot--ok' : ' dot--error'}` }),
+            h(
+              'div',
+              { class: 'list-row__main' },
+              h('span', { class: 'list-row__title', text: name }),
+              h('span', { class: 'list-row__sub', text: ok ? 'visible to this Worker' : 'not set' })
+            )
+          )
+        );
+        aiOut.append(
+          h('p', { class: 'label', style: 'margin-top:1rem', text: 'What this Worker can see' }),
+          h('div', { class: 'list-rows' }, ...rows),
+          h('p', {
+            class: 'hint',
+            text: `All bindings on this Worker: ${allNames.join(', ')}`,
+          })
+        );
+      }
     })
   );
 

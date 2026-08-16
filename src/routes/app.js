@@ -435,16 +435,50 @@ async function suggestSources(request, env, ctx) {
  * and a revoked key all end up as "ranking fell back to the heuristic". This
  * makes one small call and reports what came back.
  */
+/**
+ * What the Worker can actually see, by name only.
+ *
+ * "The secret exists in the dashboard" and "the Worker can read it" kept
+ * disagreeing, and there was no way to tell which was wrong from the outside.
+ * Listing the binding names settles it in one look: a typo, a key on the wrong
+ * Worker, and a key that was deleted all look completely different here.
+ *
+ * Names only, never values, and behind an authenticated session.
+ */
+function visibleBindings(env) {
+  const expected = [
+    'ANTHROPIC_API_KEY',
+    'TOTP_ENC_KEY',
+    'PASSWORD_PEPPER',
+    'SESSION_PEPPER',
+    'RESEND_API_KEY',
+  ];
+  const present = {};
+  for (const name of expected) present[name] = Boolean(env[name]);
+
+  // Anything that looks like it was *meant* to be one of the above. This is
+  // what catches ANTHROPIC_KEY, a trailing space, or the wrong case.
+  const near = Object.keys(env).filter(
+    (name) => !expected.includes(name) && /anthropic|api.?key|secret|token|pepper/i.test(name)
+  );
+
+  return { present, near, allNames: Object.keys(env).sort() };
+}
+
 async function aiCheck(request, env, ctx) {
   const model = env.SCORING_MODEL || 'claude-opus-5';
+  const bindings = visibleBindings(env);
 
   if (!env.ANTHROPIC_API_KEY) {
+    const hint = bindings.near.length
+      ? ` This Worker does have ${bindings.near.join(', ')} — if one of those was meant to be the key, the name does not match.`
+      : ' This Worker has no binding with a similar name, so the value is either on a different Worker or was not saved.';
     return json({
       ok: false,
       state: 'missing',
       model,
-      message:
-        'No ANTHROPIC_API_KEY secret is set on this Worker. Check the name is exactly that, and that it was saved as a Secret rather than a plaintext variable.',
+      bindings,
+      message: `No ANTHROPIC_API_KEY is visible to this Worker.${hint}`,
     });
   }
 
@@ -464,6 +498,7 @@ async function aiCheck(request, env, ctx) {
       ok: true,
       state: 'ready',
       model,
+      bindings,
       message: `Connected. ${model} replied "${((text && text.text) || '').trim().slice(0, 30)}".`,
     });
   } catch (err) {
