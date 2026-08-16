@@ -77,6 +77,14 @@ npx wrangler secret put ANTHROPIC_API_KEY   # optional - enables AI ranking
 npx wrangler secret put RESEND_API_KEY      # optional - enables email
 ```
 
+**Add these as Secrets, never as plain-text variables.** In the Cloudflare
+dashboard the type matters for more than encryption: `wrangler deploy` is
+declarative about plain-text `vars` and deletes any it does not declare, so a
+key saved as Text is wiped by the next CI deploy — silently, because the app
+falls back to its heuristics rather than failing loudly. Encrypted secrets are
+managed separately and survive. `keep_vars: true` in `wrangler.jsonc` now
+protects the plain-text ones as well, but the type is still worth getting right.
+
 Generate the two random ones with:
 
 ```bash

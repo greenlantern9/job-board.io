@@ -77,8 +77,23 @@
     }
   ],
 
-  // Not secrets. Secrets (TOTP_ENC_KEY, SESSION_PEPPER, ANTHROPIC_API_KEY,
-  // RESEND_API_KEY) are set with `wrangler secret put` - see README.
+  // `wrangler deploy` is declarative about plain-text vars: without this it
+  // reconciles the Worker to exactly the list below and DELETES anything else,
+  // including variables added through the dashboard. Since this project is
+  // configured from the dashboard rather than the CLI, that silently wiped an
+  // API key on every CI deploy - eight times before anyone noticed, because
+  // the app degrades quietly when a key is absent.
+  //
+  // Encrypted secrets were never affected; they are managed separately and
+  // survive deploys either way. This protects the plain-text ones too.
+  //
+  // The trade-off: removing a var from this file no longer removes it from the
+  // Worker. Delete those in the dashboard.
+  "keep_vars": true,
+
+  // Not secrets. Secrets (TOTP_ENC_KEY, PASSWORD_PEPPER, SESSION_PEPPER,
+  // ANTHROPIC_API_KEY, RESEND_API_KEY) must be added as *Secret* / encrypted,
+  // never as plain text - see README.
   "vars": {
     "SITE_URL": "https://job-boards.io",
     "NOTIFY_FROM": "alerts@job-boards.io",
