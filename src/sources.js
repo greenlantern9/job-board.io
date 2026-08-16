@@ -226,6 +226,7 @@ async function fetchGreenhouse(slug) {
     const location = (job.location && job.location.name) || '';
     const salary = parseSalary(description);
     return {
+      direct: true,
       externalId: `greenhouse:${board}:${job.id}`,
       title: String(job.title || 'Untitled role').trim(),
       company: board,
@@ -253,6 +254,7 @@ async function fetchLever(slug) {
     const description = job.descriptionPlain || htmlToText(job.description);
     const salary = parseSalary(`${job.salaryRange ? JSON.stringify(job.salaryRange) : ''} ${description}`);
     return {
+      direct: true,
       externalId: `lever:${board}:${job.id}`,
       title: String(job.text || 'Untitled role').trim(),
       company: board,
@@ -282,6 +284,7 @@ async function fetchAshby(slug) {
       : '';
     const salary = parseSalary(`${compensationText} ${description}`);
     return {
+      direct: true,
       externalId: `ashby:${board}:${job.id}`,
       title: String(job.title || 'Untitled role').trim(),
       company: (job.organizationName || board).trim(),
@@ -331,6 +334,7 @@ async function fetchRss(feedUrl, { selfHost } = {}) {
     );
     const salary = parseSalary(`${title} ${description}`);
     return {
+      direct: false,
       externalId: `rss:${host}:${guid}`.slice(0, 200),
       title,
       company: host,
@@ -507,6 +511,7 @@ async function fetchRemotive(query) {
     const description = htmlToText(job.description);
     const salary = parseSalary(`${job.salary || ''} ${description}`);
     return {
+      direct: false,
       externalId: `remotive:${job.id}`,
       title: String(job.title || 'Untitled role').trim(),
       company: String(job.company_name || '').trim(),
@@ -536,6 +541,7 @@ async function fetchArbeitnow(query) {
     if (!matchesQuery(job.title, body, matchers)) continue;
     const salary = parseSalary(description);
     out.push({
+      direct: false,
       externalId: `arbeitnow:${job.slug}`,
       title: String(job.title || 'Untitled role').trim(),
       company: String(job.company_name || '').trim(),
@@ -567,6 +573,7 @@ async function fetchRemoteOk(query) {
     const body = `${job.company || ''} ${(job.tags || []).join(' ')} ${description}`;
     if (!matchesQuery(job.position, body, matchers)) continue;
     out.push({
+      direct: false,
       externalId: `remoteok:${job.id || job.slug}`,
       title: String(job.position || 'Untitled role').trim(),
       company: String(job.company || '').trim(),
@@ -597,6 +604,7 @@ async function fetchHimalayas(query) {
     const body = `${job.companyName} ${(job.categories || []).join(' ')} ${description}`;
     if (!matchesQuery(job.title, body, matchers)) continue;
     out.push({
+      direct: false,
       externalId: `himalayas:${job.guid || `${job.companySlug}-${job.title}`}`.slice(0, 200),
       title: String(job.title || 'Untitled role').trim(),
       company: String(job.companyName || '').trim(),
@@ -689,6 +697,7 @@ async function fetchTheMuse(query) {
 
       const salary = parseSalary(description);
       out.push({
+        direct: false,
         externalId: `themuse:${job.id}`,
         title: String(job.name || 'Untitled role').trim(),
         company: (job.company && job.company.name) || '',
@@ -722,6 +731,7 @@ async function fetchSmartRecruiters(slug) {
       .filter(Boolean)
       .join(', ');
     return {
+      direct: true,
       externalId: `smartrecruiters:${board}:${job.id}`,
       title: String(job.name || 'Untitled role').trim(),
       company: (job.company && job.company.name) || board,

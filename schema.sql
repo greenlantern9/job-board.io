@@ -122,6 +122,9 @@ CREATE TABLE IF NOT EXISTS jobs (
   notified_at    TEXT NOT NULL DEFAULT '',
   missing_streak INTEGER NOT NULL DEFAULT 0,  -- refreshes since the board last listed it
   closed_at      TEXT NOT NULL DEFAULT '',    -- set once it is presumed filled or pulled
+  link_direct    INTEGER NOT NULL DEFAULT 0,  -- 1 = url is the employer's own careers site
+  link_status    TEXT NOT NULL DEFAULT '',    -- live | dead | unknown
+  link_checked_at TEXT NOT NULL DEFAULT '',
   updated_at     TEXT NOT NULL,
   UNIQUE (board_id, external_id),
   FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE

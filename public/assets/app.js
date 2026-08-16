@@ -583,10 +583,13 @@ function renderList() {
   $('#empty').hidden = true;
 
   for (const job of state.jobs) {
-    const meta = [job.company, job.remote ? 'Remote' : job.location, salaryText(job)]
-      .filter(Boolean)
-      .join(' · ');
     const age = postedAge(job);
+    // Remote is a property of the role, not a place, so it reads as a badge
+    // beside the location rather than replacing it - plenty of remote roles
+    // still carry a region.
+    const place = job.remote
+      ? h('span', {}, h('span', { class: 'chip-remote', text: 'Remote' }), job.location ? ` ${job.location}` : '')
+      : h('span', { text: job.location || '—' });
 
     body.append(
       h(
@@ -618,7 +621,14 @@ function renderList() {
           ),
           job.scoreReason ? h('span', { class: 'job__why', text: job.scoreReason }) : null
         ),
-        h('td', { class: 'job__meta' }, meta || '—'),
+        h(
+          'td',
+          {},
+          h('span', { class: 'job__company', text: job.company || '—' }),
+          job.linkDirect ? null : h('span', { class: 'job__via', text: 'via aggregator' })
+        ),
+        h('td', { class: 'job__place' }, place),
+        h('td', { class: 'job__pay' }, salaryText(job) || '—'),
         h('td', {}, statusSelect(job)),
         h(
           'td',
@@ -815,12 +825,22 @@ function kanbanCard(job, statusKey) {
       'div',
       { class: 'kcard__top' },
       scoreNode(job),
-      h('span', { class: 'kcard__title', text: job.title })
+      h(
+        'div',
+        { style: 'flex:1;min-width:0' },
+        // Company first and loudest. On a card this small the employer is what
+        // someone scans for - two identical titles at different companies are
+        // completely different prospects.
+        h('span', { class: 'kcard__company', text: job.company || '—' }),
+        h('span', { class: 'kcard__title', text: job.title })
+      )
     ),
-    h('span', {
-      class: 'kcard__meta',
-      text: [job.company, job.remote ? 'Remote' : job.location].filter(Boolean).join(' · ') || '—',
-    }),
+    h(
+      'span',
+      { class: 'kcard__meta' },
+      job.remote ? h('span', { class: 'chip-remote', text: 'Remote' }) : null,
+      [job.location, salaryText(job)].filter(Boolean).join(' · ') || (job.remote ? '' : '—')
+    ),
     h(
       'div',
       { class: 'kcard__move' },
@@ -905,6 +925,20 @@ function openDrawer(id) {
       job.closedAt
         ? h('span', { class: 'tag tag--closed', text: `delisted ${relativeTime(job.closedAt)}` })
         : null,
+      // Where Open actually goes, and how strong the liveness evidence is.
+      // A company board listing the role is proof; an aggregator page loading
+      // is not, and the wording says so.
+      job.linkDirect
+        ? h('span', {
+            class: 'tag tag--live',
+            title: `Confirmed in the employer's own listing when we last checked, ${relativeTime(job.linkCheckedAt)}.`,
+            text: 'on the company careers site',
+          })
+        : h('span', {
+            class: 'tag',
+            title: 'Found through a job aggregator. We could not confirm it against the employer’s own careers page.',
+            text: 'via aggregator — unconfirmed',
+          }),
       job.appliedAt ? h('span', { class: 'tag', text: `applied ${relativeTime(job.appliedAt)}` }) : null
     ),
 

@@ -100,6 +100,9 @@ const STATEMENTS = [
     notified_at TEXT NOT NULL DEFAULT '',
     missing_streak INTEGER NOT NULL DEFAULT 0,
     closed_at TEXT NOT NULL DEFAULT '',
+    link_direct INTEGER NOT NULL DEFAULT 0,
+    link_status TEXT NOT NULL DEFAULT '',
+    link_checked_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL,
     UNIQUE (board_id, external_id)
   )`,
@@ -163,6 +166,12 @@ const MIGRATIONS = [
   `ALTER TABLE jobs ADD COLUMN missing_streak INTEGER NOT NULL DEFAULT 0`,
   // Set when a job has been absent long enough to call it filled or pulled.
   `ALTER TABLE jobs ADD COLUMN closed_at TEXT NOT NULL DEFAULT ''`,
+  // 1 when the url reaches the employer's own careers site rather than an
+  // aggregator's landing page.
+  `ALTER TABLE jobs ADD COLUMN link_direct INTEGER NOT NULL DEFAULT 0`,
+  // live | dead | unknown - the result of actually fetching the posting.
+  `ALTER TABLE jobs ADD COLUMN link_status TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE jobs ADD COLUMN link_checked_at TEXT NOT NULL DEFAULT ''`,
 ];
 
 // Per-isolate latch. A cold isolate pays one batch; every later request skips

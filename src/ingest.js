@@ -3,6 +3,15 @@
 
 import { fetchSource, matchesFilters, normalizeCompany, ATS_KINDS } from './sources.js';
 import { boardQuery } from './curate.js';
+import { heuristicScore } from './rank.js';
+import { checkLinks, LINK_DEAD, LINK_LIVE } from './verify.js';
+
+/**
+ * Postings verified per refresh. Fetching sources already spends around thirty
+ * subrequests of the fifty a Worker gets on the free plan, so this is what is
+ * left to spend on checking - highest-ranked candidates first.
+ */
+const LINK_CHECK_BUDGET = 12;
 import { scoreJobs } from './scoring.js';
 import { queryAll, run, nowIso, parseJson } from './db.js';
 import { newId } from './crypto.js';
@@ -172,6 +181,50 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
 
   const now = nowIso();
 
+  // Establish that each posting still exists before it reaches the board.
+  //
+  // For a company board this is already settled and costs nothing: the job was
+  // in that employer's current listing seconds ago, which is a stronger
+  // guarantee than any link check could give. Fetching the page would in fact
+  // be *worse* - Ashby serves its single-page shell with a 200 for any job id
+  // at all, so a deleted posting looks perfectly healthy.
+  //
+  // Aggregator entries are the ones that need checking, since they can outlive
+  // the posting they describe. Even then the check is honest about its limits:
+  // their links point at the aggregator's own page, so a 200 proves the
+  // aggregator still lists it, not that the employer is still hiring. Those
+  // stay "unknown" rather than claiming more than we know.
+  if (toInsert.length > 0) {
+    for (const entry of toInsert) {
+      if (entry.job.direct) entry.linkStatus = LINK_LIVE;
+    }
+
+    const needChecking = toInsert
+      .filter((entry) => !entry.job.direct && entry.job.url)
+      .sort(
+        (a, b) =>
+          heuristicScore(b.job, { prompt: board.prompt, filters: activeFilters }).score -
+          heuristicScore(a.job, { prompt: board.prompt, filters: activeFilters }).score
+      );
+
+    if (needChecking.length > 0) {
+      const statuses = await checkLinks(
+        needChecking.map((entry) => entry.job.url),
+        { budget: LINK_CHECK_BUDGET }
+      );
+      for (const entry of needChecking) {
+        const status = statuses.get(entry.job.url);
+        if (status) entry.linkStatus = status;
+      }
+    }
+
+    const before = toInsert.length;
+    const alive = toInsert.filter((entry) => entry.linkStatus !== LINK_DEAD);
+    summary.deadOnArrival = before - alive.length;
+    toInsert.length = 0;
+    toInsert.push(...alive);
+  }
+
   // Refresh the facts on jobs we already track, but never touch status, notes,
   // position, or applied_at - that is the user's data, not the source's.
   if (toUpdate.length > 0) {
@@ -204,12 +257,12 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
 
   if (toInsert.length > 0) {
     await env.DB.batch(
-      toInsert.map(({ id, sourceId, job }) =>
+      toInsert.map(({ id, sourceId, job, linkStatus }) =>
         env.DB.prepare(
           `INSERT INTO jobs (id, board_id, user_id, source_id, external_id, title, company, location,
              remote, employment, salary_min, salary_max, salary_raw, url, description, posted_at,
-             discovered_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             discovered_at, updated_at, link_direct, link_status, link_checked_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (board_id, external_id) DO NOTHING`
         ).bind(
           id,
@@ -229,7 +282,10 @@ export async function refreshBoard(env, boardRow, { selfHost } = {}) {
           job.description,
           job.postedAt,
           now,
-          now
+          now,
+          job.direct ? 1 : 0,
+          linkStatus || '',
+          linkStatus ? now : ''
         )
       )
     );

@@ -677,11 +677,55 @@
   display: block;
 }
 
-.job__meta {
+/* Company gets its own column and full text weight. Buried in a run-on meta
+   line it was the hardest thing on the row to find, and it is the first thing
+   anyone actually looks for. */
+.job__company {
+  display: block;
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job__via {
+  display: block;
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: 0.5625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.job__place,
+.job__pay {
+  font-size: 0.8125rem;
   color: var(--muted);
-  line-height: 1.7;
+}
+
+.job__pay {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chip-remote {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--r-pill);
+  background: var(--accent-wash);
+  border: 1px solid rgba(195, 245, 60, 0.3);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 1px;
 }
 
 .jobs .score {
@@ -705,18 +749,38 @@
   width: 15rem;
 }
 
-/* Column order: score, posted, role, details, status, actions. These indices
-   have to track that order - they shifted by one when "posted" was added. */
+/* Column order: 1 score, 2 posted, 3 role, 4 company, 5 location, 6 salary,
+   7 status, 8 actions. These indices must track that order - getting them
+   stale once already hid the role title instead of the details column.
+   Things drop in order of least use: salary, then location, then status.
+   Company never drops. */
+.jobs__company-col {
+  width: 11rem;
+}
+.jobs__place-col {
+  width: 10rem;
+}
+.jobs__pay-col {
+  width: 8rem;
+}
+
+@media (max-width: 1100px) {
+  .jobs__pay-col,
+  .jobs tbody td:nth-child(6) {
+    display: none;
+  }
+}
+
 @media (max-width: 900px) {
-  .jobs__meta-col,
-  .jobs tbody td:nth-child(4) {
+  .jobs__place-col,
+  .jobs tbody td:nth-child(5) {
     display: none;
   }
 }
 
 @media (max-width: 640px) {
   .jobs__status-col,
-  .jobs tbody td:nth-child(5) {
+  .jobs tbody td:nth-child(7) {
     display: none;
   }
 }
@@ -818,12 +882,26 @@
   gap: 0.6rem;
 }
 
+.kcard__company {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .kcard__title {
+  display: block;
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.35;
-  flex: 1;
 }
 
 .kcard .score {
@@ -946,6 +1024,13 @@
 
 /* The employer has pulled the listing. Only ever appears on jobs the user
    already acted on - everything else is archived out of view. */
+/* We fetched the posting and it answered. */
+.tag--live {
+  border-color: rgba(134, 217, 127, 0.4);
+  background: rgba(134, 217, 127, 0.1);
+  color: var(--ok);
+}
+
 .tag--closed {
   margin-left: 0.5rem;
   border-color: rgba(242, 109, 97, 0.4);

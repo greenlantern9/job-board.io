@@ -122,6 +122,9 @@ function jobToPublic(row) {
     notes: row.notes,
     appliedAt: row.applied_at,
     closedAt: row.closed_at || '',
+    linkDirect: Boolean(row.link_direct),
+    linkStatus: row.link_status || '',
+    linkCheckedAt: row.link_checked_at || '',
     updatedAt: row.updated_at,
   };
 }
