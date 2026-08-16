@@ -188,6 +188,14 @@ const MIGRATIONS = [
   // live | dead | unknown - the result of actually fetching the posting.
   `ALTER TABLE jobs ADD COLUMN link_status TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE jobs ADD COLUMN link_checked_at TEXT NOT NULL DEFAULT ''`,
+  // When the status last changed, so "gone quiet" measures silence since the
+  // last real move rather than since any edit. updated_at is bumped by notes,
+  // scoring and source refreshes, which would reset the clock constantly.
+  `ALTER TABLE jobs ADD COLUMN status_changed_at TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE jobs ADD COLUMN followed_up_at TEXT NOT NULL DEFAULT ''`,
+  // What the job asks for that the profile does not cover. Stored so the
+  // skill-gap report can aggregate without re-scoring everything.
+  `ALTER TABLE jobs ADD COLUMN gaps TEXT NOT NULL DEFAULT '[]'`,
 ];
 
 // Per-isolate latch. A cold isolate pays one batch; every later request skips

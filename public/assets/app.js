@@ -1837,6 +1837,143 @@ async function renderAlerts(container) {
   );
 }
 
+// --- insights --------------------------------------------------------------
+
+async function openInsights() {
+  const body = h('div', {});
+  showModal('Insights', body, { wide: true });
+  await renderInsights(body);
+}
+
+async function renderInsights(container, afterDays) {
+  clear(container);
+  const query = afterDays === undefined ? '' : `?afterDays=${afterDays}`;
+  const { followUps, skillGaps, followUpAfterDays } = await api(`/api/insights${query}`);
+
+  // --- applications that have gone quiet ---
+  const quiet = h('div', { class: 'list-rows' });
+  if (followUps.length === 0) {
+    quiet.append(
+      h('p', {
+        class: 'muted',
+        style: 'font-size:.875rem',
+        text: 'Nothing has gone quiet. Applications appear here once they have sat unchanged for a while.',
+      })
+    );
+  }
+  for (const item of followUps) {
+    quiet.append(
+      h(
+        'div',
+        { class: 'list-row' },
+        h('span', { class: 'dot dot--error' }),
+        h(
+          'div',
+          { class: 'list-row__main' },
+          h('span', { class: 'list-row__title', text: `${item.title} · ${item.company}` }),
+          h('span', {
+            class: 'list-row__sub',
+            text: `${item.status} · quiet ${item.quietForDays} days${item.delisted ? ' · listing has come down' : ''}`,
+          })
+        ),
+        item.url
+          ? h('a', {
+              class: 'btn btn--ghost btn--sm',
+              href: safeHref(item.url),
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              text: 'Open',
+            })
+          : null,
+        h('button', {
+          class: 'btn btn--ghost btn--sm',
+          text: 'Followed up',
+          title: 'Stop reminding me about this one.',
+          onclick: async (event) => {
+            await busy(event.target, 'Saving…', async () => {
+              await api('/api/jobs/followed-up', { method: 'POST', body: { id: item.id } });
+              await renderInsights(container);
+            })(event);
+          },
+        })
+      )
+    );
+  }
+
+  // --- recurring skill gaps ---
+  const gapsBox = h('div', {});
+  if (!skillGaps.ready) {
+    gapsBox.append(
+      h('div', {
+        class: 'notice notice--warn',
+        text:
+          skillGaps.reason === 'no-profile'
+            ? 'Turn on your profile to see which skills keep coming up in jobs you are not quite matching.'
+            : 'Not enough scored jobs yet. Add some to a board and check back.',
+      })
+    );
+  } else if (skillGaps.gaps.length === 0) {
+    gapsBox.append(
+      h('div', {
+        class: 'notice notice--ok',
+        text: `Nothing recurring across ${skillGaps.scanned} jobs — your profile covers what they are asking for.`,
+      })
+    );
+  } else {
+    const max = skillGaps.gaps[0].jobs || 1;
+    gapsBox.append(
+      h('p', {
+        class: 'hint',
+        style: 'margin-bottom:1rem',
+        text: `Across ${skillGaps.scanned} scored jobs, weighted so gaps on roles you match well count for more.`,
+      }),
+      ...skillGaps.gaps.map((gap) =>
+        h(
+          'div',
+          { class: 'gap-row', title: gap.examples.join(' · ') },
+          h('span', { class: 'gap-row__name', text: gap.skill }),
+          h('span', { class: 'gap-row__bar' }, h('i', { style: `width:${Math.round((gap.jobs / max) * 100)}%` })),
+          h('span', { class: 'gap-row__n mono', text: `${gap.jobs} jobs · ${gap.share}%` })
+        )
+      )
+    );
+  }
+
+  container.append(
+    h(
+      'div',
+      { class: 'panel' },
+      h('h3', { text: 'Gone quiet' }),
+      h('p', {
+        text: `Applications with no movement for ${followUpAfterDays} days or more. Long enough not to look impatient, short enough that they still remember reading your name.`,
+      }),
+      h(
+        'label',
+        { class: 'field', style: 'max-width:16rem' },
+        h('span', { text: 'Quiet after' }),
+        h(
+          'select',
+          {
+            class: 'select',
+            onchange: (event) => renderInsights(container, Number(event.target.value)),
+          },
+          ...[3, 7, 10, 14, 21, 30].map((d) =>
+            h('option', { value: String(d), selected: d === followUpAfterDays }, `${d} days`)
+          )
+        )
+      ),
+      quiet
+    ),
+    h(
+      'div',
+      { class: 'panel' },
+      h('h3', { text: 'Skills that keep coming up' }),
+      h('p', { text: 'What the jobs you are chasing ask for that your profile does not mention.' }),
+      gapsBox
+    )
+  );
+}
+
 // --- candidate profile (optional) ------------------------------------------
 
 async function openProfile() {
@@ -2350,6 +2487,7 @@ async function boot() {
   // Add the alerts entry point once the app chrome exists.
   $('.sidebar__section').append(
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Profile', onclick: openProfile }),
+    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Insights', onclick: openInsights }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Sources', onclick: openSources }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Alerts', onclick: openAlerts })
   );

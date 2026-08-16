@@ -20,7 +20,8 @@ import {
 import { suggestCompanies } from '../suggest.js';
 import { curateBoard } from '../curate.js';
 import { applyIntent } from '../intent.js';
-import { getProfile, saveProfile, parseCvHeuristically } from '../profile.js';
+import { getProfile, saveProfile, parseCvHeuristically, activeProfile } from '../profile.js';
+import { quietApplications, skillGapReport, FOLLOWUP_AFTER_DAYS } from '../insights.js';
 import { parseCvWithModel } from '../scoring.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
@@ -223,6 +224,39 @@ async function addJobs(request, env, ctx) {
     active: await activeJobCount(env, board.id),
     max: MAX_ACTIVE_JOBS,
   });
+}
+
+// --- insights --------------------------------------------------------------
+
+/** Quiet applications and recurring skill gaps, both from data already stored. */
+async function insights(request, env, ctx) {
+  // Ten days is the default, but "quiet" means different things in different
+  // markets and at different stages, so the threshold is adjustable.
+  const requested = Number(new URL(request.url).searchParams.get('afterDays'));
+  const afterDays = Number.isFinite(requested) && requested >= 0 && requested <= 180
+    ? requested
+    : FOLLOWUP_AFTER_DAYS;
+
+  const profile = await activeProfile(env, ctx.user.id);
+  const [followUps, skillGaps] = await Promise.all([
+    quietApplications(env, ctx.user.id, { afterDays }),
+    skillGapReport(env, ctx.user.id, profile),
+  ]);
+  return json({ followUps, skillGaps, followUpAfterDays: afterDays });
+}
+
+async function markFollowedUp(request, env, ctx) {
+  const body = await readJson(request);
+  const result = await run(
+    env,
+    'UPDATE jobs SET followed_up_at = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+    nowIso(),
+    nowIso(),
+    String(body.id || ''),
+    ctx.user.id
+  );
+  if (!(result.meta && result.meta.changes)) return notFound('Job not found.');
+  return json({ ok: true });
 }
 
 // --- candidate profile (optional) ------------------------------------------
@@ -770,15 +804,24 @@ async function updateJob(request, env, ctx) {
   if (status === 'applied' && job.status !== 'applied' && !appliedAt) appliedAt = nowIso();
   if (status === 'new' || status === 'saved') appliedAt = '';
 
+  const now = nowIso();
+  const statusMoved = status !== job.status;
+
   await run(
     env,
-    `UPDATE jobs SET status = ?, notes = ?, position = ?, applied_at = ?, updated_at = ?
+    `UPDATE jobs SET status = ?, notes = ?, position = ?, applied_at = ?, updated_at = ?,
+       status_changed_at = ?, followed_up_at = ?
      WHERE id = ? AND user_id = ?`,
     status,
     String(body.notes ?? job.notes).slice(0, 4000),
     Number.isFinite(Number(body.position)) ? Number(body.position) : job.position,
     appliedAt,
-    nowIso(),
+    now,
+    // Only a real move resets the silence clock. Editing notes on an
+    // application that has gone quiet should not make it look fresh again.
+    statusMoved ? now : job.status_changed_at || '',
+    // Moving forward means they replied, so any follow-up flag is spent.
+    statusMoved ? '' : job.followed_up_at || '',
     job.id,
     ctx.user.id
   );
@@ -931,6 +974,9 @@ export const APP_ROUTES = {
   'POST /api/rules/update': { handler: updateRule },
   'POST /api/rules/delete': { handler: deleteRule },
   'GET /api/notifications': { handler: notificationHistory },
+
+  'GET /api/insights': { handler: insights },
+  'POST /api/jobs/followed-up': { handler: markFollowedUp },
 
   'GET /api/profile': { handler: readProfile },
   'POST /api/profile': { handler: writeProfile },
