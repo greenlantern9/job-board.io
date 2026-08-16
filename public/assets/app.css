@@ -620,16 +620,19 @@
   font-size: 0.9375rem;
 }
 
+/* 10px uppercase mono with wide tracking was legible only if you already knew
+   what it said. Larger text also needs less letter-spacing to read as a unit,
+   and the lighter colour was doing the size no favours. */
 .jobs thead th {
-  padding: 0.6rem 1rem;
+  padding: 0.7rem 1rem;
   border-bottom: 1px solid var(--line-soft);
   background: var(--surface-2);
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
   text-align: left;
 }
 
