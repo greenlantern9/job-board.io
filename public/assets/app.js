@@ -110,7 +110,23 @@ const STATUSES = [
   { key: 'interview', label: 'Interview', color: '#f0b44a' },
   { key: 'offer', label: 'Offer', color: '#86d97f' },
   { key: 'rejected', label: 'Rejected', color: '#f26d61' },
+  // Set by the refresh, not chosen. Listed here so it gets a chip, a kanban
+  // column and a place in the status dropdown like any other state.
+  { key: 'delisted', label: 'No Longer Listed', color: '#f26d61' },
 ];
+
+/**
+ * Two different situations, deliberately shown differently.
+ *
+ * A job nobody acted on that the employer pulled is a dead end - red, because
+ * there is nothing left to do with it. A job you already applied to or are
+ * interviewing for is *not* a dead end just because the public listing came
+ * down; that is normal once a role is filled internally or the posting closes,
+ * and your conversation is still live. It keeps its own status and gets a
+ * quiet note, with no alarm colour.
+ */
+const isDelisted = (job) => job.status === 'delisted';
+const isClosedButTracked = (job) => Boolean(job.closedAt) && job.status !== 'delisted';
 
 const statusLabel = (key) => (STATUSES.find((s) => s.key === key) || { label: 'Archived' }).label;
 const scoreBand = (score) => (score >= 75 ? 'high' : score >= 50 ? 'mid' : 'low');
@@ -623,7 +639,9 @@ function renderList() {
       h(
         'tr',
         {
-          class: job.status === 'archived' ? 'is-archived' : '',
+          class: [job.status === 'archived' ? 'is-archived' : '', isDelisted(job) ? 'is-delisted' : '']
+            .filter(Boolean)
+            .join(' '),
           onclick: () => openDrawer(job.id),
         },
         h('td', {}, scoreNode(job)),
@@ -643,9 +661,17 @@ function renderList() {
             'span',
             { class: 'job__title' },
             job.title,
-            // Kept visible rather than hidden: the user applied to this, and
-            // knowing the listing is gone is the useful part.
-            job.closedAt ? h('span', { class: 'tag tag--closed', text: 'no longer listed' }) : null
+            // Shown on both, but only the untouched ones colour the row. On a
+            // job you are already in process for this is a note, not an alarm.
+            isDelisted(job)
+              ? h('span', { class: 'tag tag--closed', text: 'no longer listed' })
+              : isClosedButTracked(job)
+                ? h('span', {
+                    class: 'tag tag--noted',
+                    title: 'The public listing has come down. Your application is unaffected.',
+                    text: 'no longer listed',
+                  })
+                : null
           ),
           job.scoreReason ? h('span', { class: 'job__why', text: job.scoreReason }) : null
         ),
@@ -868,7 +894,7 @@ function kanbanCard(job, statusKey) {
   const card = h(
     'article',
     {
-      class: 'kcard',
+      class: `kcard${isDelisted(job) ? ' is-delisted' : ''}`,
       draggable: 'true',
       tabindex: '0',
       ondragstart: (event) => {
@@ -995,7 +1021,10 @@ function openDrawer(id) {
       job.postedAt ? h('span', { class: 'tag', text: `posted ${relativeTime(job.postedAt)}` }) : null,
       h('span', { class: 'tag', text: `found ${relativeTime(job.discoveredAt)}` }),
       job.closedAt
-        ? h('span', { class: 'tag tag--closed', text: `delisted ${relativeTime(job.closedAt)}` })
+        ? h('span', {
+            class: isDelisted(job) ? 'tag tag--closed' : 'tag tag--noted',
+            text: `no longer listed ${relativeTime(job.closedAt)}`,
+          })
         : null,
       // Where Open actually goes, and how strong the liveness evidence is.
       // A company board listing the role is proof; an aggregator page loading

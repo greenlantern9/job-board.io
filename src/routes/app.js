@@ -23,7 +23,18 @@ import { applyIntent } from '../intent.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
 
-export const JOB_STATUSES = ['new', 'saved', 'applied', 'interview', 'offer', 'rejected', 'archived'];
+export const JOB_STATUSES = [
+  'new',
+  'saved',
+  'applied',
+  'interview',
+  'offer',
+  'rejected',
+  // Set by the refresh when the employer stops listing the role. Not something
+  // a user picks, but valid to store and to filter on.
+  'delisted',
+  'archived',
+];
 
 // --- shared helpers --------------------------------------------------------
 
@@ -159,10 +170,11 @@ async function listBoards(request, env, ctx) {
   return json({
     boards: rows.map((row) => {
       const counts = byBoard[row.id] || {};
-      // Rejected and archived do not occupy a slot, so the capacity the user
-      // sees has to exclude them or the number would not match the rule.
+      // Must match activeJobCount exactly, or the capacity shown disagrees with
+      // the capacity enforced - which is how you get a board reading 30 of 50
+      // while the server thinks there is room for eleven more.
       const active = Object.entries(counts)
-        .filter(([status]) => status !== 'rejected' && status !== 'archived')
+        .filter(([status]) => !['rejected', 'archived', 'delisted'].includes(status))
         .reduce((sum, [, n]) => sum + n, 0);
       return { ...boardToPublic(row), counts, active, maxActive: MAX_ACTIVE_JOBS };
     }),
@@ -621,12 +633,8 @@ async function listJobs(request, env, ctx) {
     sql += " AND status <> 'archived'";
   }
 
-  // Jobs the employer has stopped listing are hidden unless asked for. The ones
-  // the user applied to are kept visible and flagged, since that is their own
-  // record of having applied rather than a listing.
-  if (!url.searchParams.get('includeClosed')) {
-    sql += " AND (closed_at = '' OR status NOT IN ('new', 'saved'))";
-  }
+  // Delisted jobs stay on the board. Knowing a role has gone is information
+  // worth having, and hiding it makes the board look like it lost something.
 
   const q = String(url.searchParams.get('q') || '').trim().slice(0, 100);
   if (q) {

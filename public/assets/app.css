@@ -665,6 +665,33 @@
   opacity: 0.45;
 }
 
+/* The employer has pulled the listing. Red, but a tinted row rather than red
+   text - the row still has to be readable, since it is kept precisely so the
+   user can see what happened. The left border carries the signal for anyone
+   who cannot distinguish the tint. */
+.jobs tbody tr.is-delisted {
+  background: rgba(242, 109, 97, 0.09);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.jobs tbody tr.is-delisted:hover {
+  background: rgba(242, 109, 97, 0.15);
+}
+
+.jobs tbody tr.is-delisted .job__title {
+  color: #ffb3ab;
+}
+
+/* Same treatment on the kanban card, so the two views agree. */
+.kcard.is-delisted {
+  border-color: rgba(242, 109, 97, 0.45);
+  background: rgba(242, 109, 97, 0.09);
+}
+
+.kcard.is-delisted .kcard__company {
+  color: var(--danger);
+}
+
 .jobs td {
   padding: 0.8rem 1rem;
   vertical-align: middle;
@@ -1030,6 +1057,16 @@
 
 /* The employer has pulled the listing. Only ever appears on jobs the user
    already acted on - everything else is archived out of view. */
+/* The listing came down, but the user is already in process - a note rather
+   than a warning, so it stays neutral. */
+.tag--noted {
+  margin-left: 0.5rem;
+  border-color: var(--line);
+  background: var(--surface-3);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* We fetched the posting and it answered. */
 .tag--live {
   border-color: rgba(134, 217, 127, 0.4);

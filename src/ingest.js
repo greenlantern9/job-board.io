@@ -60,13 +60,19 @@ export const MAX_ACTIVE_JOBS = 50;
  * should free the space rather than permanently spend it - otherwise triaging a
  * board would gradually fill it with things already dismissed.
  */
-const INACTIVE_STATUSES = ['rejected', 'archived'];
+const INACTIVE_STATUSES = ['rejected', 'archived', 'delisted'];
 
-/** Jobs currently occupying a slot on the board. */
+/**
+ * Jobs currently occupying a slot.
+ *
+ * A delisted job is no longer applicable to, so it does not hold a slot either
+ * - it stays visible as a record of what happened, but it should not stop a
+ * live opening taking its place.
+ */
 export async function activeJobCount(env, boardId) {
   const row = await queryOne(
     env,
-    `SELECT COUNT(*) AS n FROM jobs WHERE board_id = ? AND status NOT IN ('rejected', 'archived')`,
+    `SELECT COUNT(*) AS n FROM jobs WHERE board_id = ? AND status NOT IN ('rejected', 'archived', 'delisted')`,
     boardId
   );
   return (row && row.n) || 0;
@@ -435,12 +441,17 @@ async function reapClosedJobs(env, board, { reapable, seen, now }) {
   );
   result.closed = (closed.meta && closed.meta.changes) || 0;
 
-  // Archive the ones nobody acted on. A job the user applied to keeps its
-  // status - that record is theirs, not the source's - and is flagged in the
-  // UI as no longer listed instead.
+  // Move untouched jobs to "No longer listed" rather than archiving them out of
+  // sight. Knowing a role you were considering has gone is useful information;
+  // silently hiding it just makes the board look like it lost something.
+  //
+  // Anything the user acted on keeps its status - a job you applied to is still
+  // a job you applied to, and overwriting that would destroy your own record of
+  // the pipeline. Those are marked by closed_at instead, which drives the same
+  // red row.
   await run(
     env,
-    `UPDATE jobs SET status = 'archived', updated_at = ?
+    `UPDATE jobs SET status = 'delisted', updated_at = ?
      WHERE board_id = ? AND closed_at <> '' AND status IN ('new', 'saved')`,
     now,
     board.id
