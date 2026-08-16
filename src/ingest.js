@@ -4,6 +4,7 @@
 import { fetchSource, matchesFilters, normalizeCompany, safeExternalUrl, ATS_KINDS } from './sources.js';
 import { boardQuery } from './curate.js';
 import { heuristicScore } from './rank.js';
+import { activeProfile } from './profile.js';
 import { checkLinks, LINK_DEAD, LINK_LIVE } from './verify.js';
 
 /**
@@ -494,7 +495,10 @@ export async function scoreUnscored(env, board, { limit = 500, force = false } =
     postedAt: row.posted_at,
   }));
 
-  const { results, warnings } = await scoreJobs(env, jobs, board);
+  // Null unless the user has a profile and has switched it on, so ranking with
+  // no profile behaves exactly as it did before profiles existed.
+  const profile = await activeProfile(env, board.user_id);
+  const { results, warnings } = await scoreJobs(env, jobs, board, { profile });
   const now = nowIso();
 
   // Chunked: a single batch of several hundred statements risks tripping D1's

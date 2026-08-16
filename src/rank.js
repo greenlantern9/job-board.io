@@ -171,10 +171,11 @@ const STOPWORDS = new Set([
  * inputs always produce the same number, which matters because this is what
  * the list is sorted by when the model is not in play.
  */
-export function heuristicScore(job, { prompt = '', filters = {} } = {}) {
+export function heuristicScore(job, { prompt = '', filters = {}, profile = null } = {}) {
   const haystack = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
   const titleText = String(job.title || '').toLowerCase();
   const reasons = [];
+  const gaps = [];
   let score = 40; // neutral baseline
 
   // 1. The role itself (up to +40), which has to dominate.
@@ -332,9 +333,48 @@ export function heuristicScore(job, { prompt = '', filters = {} } = {}) {
     reasons.unshift('on your company list');
   }
 
+  // 9. The candidate profile, when one exists and is enabled.
+  //
+  //    Deal-breakers are absolute rather than a deduction. Something the person
+  //    has said they will not accept should not sit near the top of their board
+  //    with a polite penalty applied - it should be out.
+  if (profile) {
+    const dealBreaker = (profile.dealBreakers || [])
+      .map((t) => String(t).trim().toLowerCase())
+      .find((t) => t.length > 1 && haystack.includes(t));
+    if (dealBreaker) {
+      return {
+        score: 0,
+        reason: `ruled out — you listed "${dealBreaker}" as a deal-breaker`,
+        scoredBy: 'heuristic',
+        gaps: [`Mentions "${dealBreaker}"`],
+      };
+    }
+
+    const missing = (profile.mustHave || [])
+      .map((t) => String(t).trim().toLowerCase())
+      .filter((t) => t.length > 1 && !haystack.includes(t));
+    if (missing.length > 0) {
+      score -= Math.min(25, missing.length * 12);
+      gaps.push(`no mention of ${missing.slice(0, 3).join(', ')}`);
+    }
+
+    const matched = (profile.skills || [])
+      .map((s) => String(s).trim().toLowerCase())
+      .filter((s) => s.length > 1 && haystack.includes(s));
+    if (matched.length > 0) {
+      score += Math.min(15, matched.length * 3);
+      reasons.push(`matches your ${matched.slice(0, 3).join(', ')}`);
+    }
+  }
+
   return {
     score: Math.max(0, Math.min(100, Math.round(score))),
     reason: reasons.length ? reasons.slice(0, 3).join('; ') : 'baseline relevance',
     scoredBy: 'heuristic',
+    // What the job asks for that this candidate does not obviously have.
+    // Empty is meaningful: it says nothing was found wanting, not that nothing
+    // was checked.
+    gaps,
   };
 }

@@ -48,6 +48,61 @@ an unstated attribute is neutral, not a penalty. Where the criteria are vague, p
 reading over a strict one. Return one entry per posting, using the exact id given.
 Each reason is one short sentence naming the single strongest factor in the score.`;
 
+const CV_SCHEMA = {
+  type: 'object',
+  properties: {
+    headline: { type: 'string', description: 'One line, e.g. "Senior TPM, 8 years, infrastructure"' },
+    skills: { type: 'array', items: { type: 'string' }, description: 'Concrete skills and technologies, lowercase' },
+    titles: { type: 'array', items: { type: 'string' }, description: 'Job titles actually held, most recent first' },
+    yearsExperience: { type: 'integer', description: 'Total years of professional experience' },
+    seniority: {
+      type: 'integer',
+      description: '0 intern, 1 junior, 2 mid, 3 senior or staff, 4 principal, 5 director or above',
+    },
+  },
+  required: ['headline', 'skills', 'titles', 'yearsExperience', 'seniority'],
+  additionalProperties: false,
+};
+
+/**
+ * Read a CV into structured fields.
+ *
+ * Extraction only - it must not infer, embellish, or round anything up. The
+ * profile drives what the user is shown, and a profile containing things they
+ * did not write is worse than no profile at all.
+ */
+export async function parseCvWithModel(env, text) {
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('no API key configured');
+
+  const client = new Anthropic({ apiKey });
+  const response = await client.beta.messages.create({
+    model: env.SCORING_MODEL || 'claude-opus-5',
+    max_tokens: 2000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: CV_SCHEMA } },
+    system:
+      'Extract only what the CV states. Do not infer skills from job titles, do not add adjacent ' +
+      'technologies, and do not round experience up. If something is absent, leave it out or return ' +
+      'zero. This becomes the candidate profile, and inventing anything in it misrepresents a real person.',
+    messages: [{ role: 'user', content: `CV text:\n\n${text}` }],
+  });
+
+  if (response.stop_reason === 'refusal') throw new Error('the model declined to read that text');
+  const block = response.content.find((b) => b.type === 'text');
+  if (!block) throw new Error('the model returned nothing');
+
+  const parsed = JSON.parse(block.text);
+  return {
+    headline: String(parsed.headline || '').slice(0, 160),
+    skills: (parsed.skills || []).map((s) => String(s).toLowerCase()).slice(0, 40),
+    titles: (parsed.titles || []).map((s) => String(s)).slice(0, 12),
+    yearsExperience: Math.max(0, Math.min(60, Number(parsed.yearsExperience) || 0)),
+    seniority: Math.max(0, Math.min(5, Number(parsed.seniority) || 0)),
+  };
+}
+
 function jobDigest(job) {
   return [
     `id: ${job.id}`,
@@ -138,8 +193,8 @@ async function scoreBatchWithClaude(client, model, jobs, { prompt, filters }) {
  * {score, reason, scoredBy}. Always resolves: a model failure degrades to the
  * heuristic for the affected batch and is reported in `warnings`.
  */
-export async function scoreJobs(env, jobs, board) {
-  const context = { prompt: board.prompt || '', filters: board.filters || {} };
+export async function scoreJobs(env, jobs, board, { profile = null } = {}) {
+  const context = { prompt: board.prompt || '', filters: board.filters || {}, profile };
   const results = new Map();
   const warnings = [];
 

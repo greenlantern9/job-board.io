@@ -140,6 +140,22 @@ const STATEMENTS = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedupe ON notifications(dedupe_key) WHERE dedupe_key <> ''`,
   `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC)`,
+  // Optional candidate profile. One row per user; absent or disabled means the
+  // ranking behaves exactly as it did before profiles existed.
+  `CREATE TABLE IF NOT EXISTS profiles (
+    user_id TEXT PRIMARY KEY,
+    headline TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    skills TEXT NOT NULL DEFAULT '[]',
+    titles TEXT NOT NULL DEFAULT '[]',
+    years_experience INTEGER NOT NULL DEFAULT 0,
+    seniority INTEGER,
+    must_have TEXT NOT NULL DEFAULT '[]',
+    deal_breakers TEXT NOT NULL DEFAULT '[]',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
 ];
 
 /**

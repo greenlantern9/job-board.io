@@ -182,6 +182,73 @@ test('the company boost tolerates slug and legal-suffix variation', () => {
   assert.match(plain.reason, /on your company list/);
 });
 
+// --- candidate profile (optional) ------------------------------------------
+
+test('no profile leaves scoring exactly as it was', () => {
+  const job = base();
+  const withoutKey = heuristicScore(job, { prompt: 'backend go' });
+  const withNull = heuristicScore(job, { prompt: 'backend go', profile: null });
+  assert.deepEqual(withNull, withoutKey);
+});
+
+test('a deal-breaker rules a job out rather than deducting from it', () => {
+  const job = base({ description: 'Go, Postgres, and a crypto trading platform.' });
+  const result = heuristicScore(job, {
+    prompt: 'senior backend go',
+    profile: { dealBreakers: ['crypto'], skills: ['go'], mustHave: [] },
+  });
+  // Not "scored a bit lower" - out. Someone who said they will not do this
+  // should not find it near the top of their board.
+  assert.equal(result.score, 0);
+  assert.match(result.reason, /deal-breaker/);
+  assert.deepEqual(result.gaps, ['Mentions "crypto"']);
+});
+
+test('a deal-breaker beats every positive signal', () => {
+  // A perfect match on everything else must still be ruled out.
+  const job = base({ title: 'Senior Backend Engineer', description: 'Go, crypto exchange', postedAt: daysAgo(0) });
+  const result = heuristicScore(job, {
+    prompt: 'senior backend engineer go',
+    filters: { remoteOnly: true },
+    profile: { dealBreakers: ['crypto'], skills: ['go'], mustHave: [] },
+  });
+  assert.equal(result.score, 0);
+});
+
+test('missing must-haves are reported as gaps, not silent', () => {
+  const result = heuristicScore(base(), {
+    prompt: 'backend',
+    profile: { dealBreakers: [], skills: [], mustHave: ['kubernetes', 'terraform'] },
+  });
+  assert.ok(result.gaps.length > 0);
+  assert.match(result.gaps[0], /kubernetes/);
+});
+
+test('profile skills present in the posting raise the score', () => {
+  const job = base({ description: 'Go, Postgres, Kubernetes, Terraform.' });
+  const without = heuristicScore(job, { prompt: 'backend' });
+  const with_ = heuristicScore(job, {
+    prompt: 'backend',
+    profile: { dealBreakers: [], mustHave: [], skills: ['go', 'kubernetes', 'terraform'] },
+  });
+  assert.ok(with_.score > without.score);
+  assert.match(with_.reason, /matches your/);
+});
+
+test('an empty deal-breaker string cannot rule everything out', () => {
+  // A blank entry left in the list must not match every job by substring.
+  const result = heuristicScore(base(), {
+    prompt: 'backend',
+    profile: { dealBreakers: ['', ' ', 'x'], skills: [], mustHave: [] },
+  });
+  assert.notEqual(result.score, 0);
+});
+
+test('every result carries a gaps array, even when nothing is wrong', () => {
+  const result = heuristicScore(base(), { prompt: 'backend' });
+  assert.ok(Array.isArray(result.gaps));
+});
+
 test('every result carries a reason and a provenance tag', () => {
   const result = heuristicScore(base(), {});
   assert.equal(result.scoredBy, 'heuristic');

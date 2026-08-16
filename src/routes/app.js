@@ -20,6 +20,8 @@ import {
 import { suggestCompanies } from '../suggest.js';
 import { curateBoard } from '../curate.js';
 import { applyIntent } from '../intent.js';
+import { getProfile, saveProfile, parseCvHeuristically } from '../profile.js';
+import { parseCvWithModel } from '../scoring.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
 
@@ -221,6 +223,61 @@ async function addJobs(request, env, ctx) {
     active: await activeJobCount(env, board.id),
     max: MAX_ACTIVE_JOBS,
   });
+}
+
+// --- candidate profile (optional) ------------------------------------------
+
+async function readProfile(request, env, ctx) {
+  const profile = await getProfile(env, ctx.user.id);
+  return json({
+    profile,
+    // The client needs to know the model is available before offering to parse
+    // a CV with it, rather than offering and then failing.
+    canParseWithModel: Boolean(env.ANTHROPIC_API_KEY),
+  });
+}
+
+async function writeProfile(request, env, ctx) {
+  const body = await readJson(request);
+  const profile = await saveProfile(env, ctx.user.id, body);
+  return json({ ok: true, profile });
+}
+
+/**
+ * Turn pasted CV text into structured fields.
+ *
+ * The heuristic pass always runs, so this works with no API key at all - just
+ * less well. Nothing is saved here; the extracted fields go back to the client
+ * for review first, because a profile quietly populated with things you did not
+ * write would be worse than an empty one.
+ */
+async function parseProfile(request, env, ctx) {
+  const body = await readJson(request);
+  const text = String(body.text || '').slice(0, 20000);
+  if (text.trim().length < 40) {
+    return badRequest('Paste a bit more of your CV — a few lines is not enough to read.');
+  }
+  if (!(await allowRate(env.API_RATE_LIMIT, `parsecv:${ctx.user.id}`))) {
+    return tooMany('Give it a minute between parses.');
+  }
+
+  const heuristic = parseCvHeuristically(text);
+  if (!env.ANTHROPIC_API_KEY) {
+    return json({ ok: true, parsedBy: 'heuristic', profile: heuristic });
+  }
+
+  try {
+    const parsed = await parseCvWithModel(env, text);
+    return json({ ok: true, parsedBy: env.SCORING_MODEL || 'claude-opus-5', profile: { ...heuristic, ...parsed } });
+  } catch (err) {
+    // Falling back is better than failing: the heuristic result is still usable.
+    return json({
+      ok: true,
+      parsedBy: 'heuristic',
+      profile: heuristic,
+      warning: `Could not read it with the model, so this is the basic pass: ${err.message}`,
+    });
+  }
 }
 
 /** Re-run source discovery on demand, from the board's Sources panel. */
@@ -874,4 +931,8 @@ export const APP_ROUTES = {
   'POST /api/rules/update': { handler: updateRule },
   'POST /api/rules/delete': { handler: deleteRule },
   'GET /api/notifications': { handler: notificationHistory },
+
+  'GET /api/profile': { handler: readProfile },
+  'POST /api/profile': { handler: writeProfile },
+  'POST /api/profile/parse': { handler: parseProfile },
 };

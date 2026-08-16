@@ -1837,6 +1837,114 @@ async function renderAlerts(container) {
   );
 }
 
+// --- candidate profile (optional) ------------------------------------------
+
+async function openProfile() {
+  const body = h('div', {});
+  showModal('Your profile', body, { wide: true });
+  await renderProfile(body);
+}
+
+async function renderProfile(container) {
+  clear(container);
+  const { profile, canParseWithModel } = await api('/api/profile');
+  const p = profile || {
+    headline: '', skills: [], titles: [], yearsExperience: 0,
+    mustHave: [], dealBreakers: [], enabled: false, summary: '',
+  };
+
+  const enabled = h('input', { type: 'checkbox', checked: p.enabled });
+  const headline = h('input', { class: 'input', value: p.headline, placeholder: 'Senior TPM, 8 years, infrastructure' });
+  const skills = h('input', { class: 'input', value: (p.skills || []).join(', '), placeholder: 'kubernetes, terraform, python' });
+  const mustHave = h('input', { class: 'input', value: (p.mustHave || []).join(', '), placeholder: 'kubernetes' });
+  const dealBreakers = h('input', { class: 'input', value: (p.dealBreakers || []).join(', '), placeholder: 'crypto, on-call, relocation' });
+  const years = h('input', { class: 'input', type: 'number', min: '0', max: '60', value: String(p.yearsExperience || 0) });
+  const cv = h('textarea', { class: 'textarea', style: 'min-height:9rem', placeholder: 'Paste your CV here…', text: p.summary || '' });
+  const parseOut = h('div', {});
+
+  const parse = h('button', { class: 'btn btn--ghost', text: 'Read my CV' });
+  parse.addEventListener(
+    'click',
+    busy(parse, 'Reading…', async () => {
+      const res = await api('/api/profile/parse', { method: 'POST', body: { text: cv.value } });
+      // Filled in for review rather than saved: a profile quietly populated
+      // with things you did not write is worse than an empty one.
+      headline.value = res.profile.headline || headline.value;
+      if ((res.profile.skills || []).length) skills.value = res.profile.skills.join(', ');
+      if (res.profile.yearsExperience) years.value = String(res.profile.yearsExperience);
+      clear(parseOut).append(
+        h('div', {
+          class: `notice notice--${res.warning ? 'warn' : 'ok'}`,
+          text:
+            res.warning ||
+            `Read with the ${res.parsedBy === 'heuristic' ? 'built-in reader' : res.parsedBy}. Check it below, then save.`,
+        })
+      );
+    })
+  );
+
+  const save = h('button', { class: 'btn btn--primary', text: 'Save profile' });
+  save.addEventListener(
+    'click',
+    busy(save, 'Saving…', async () => {
+      await api('/api/profile', {
+        method: 'POST',
+        body: {
+          enabled: enabled.checked,
+          headline: headline.value,
+          summary: cv.value,
+          skills: skills.value,
+          titles: p.titles || [],
+          yearsExperience: Number(years.value) || 0,
+          mustHave: mustHave.value,
+          dealBreakers: dealBreakers.value,
+        },
+      });
+      toast(enabled.checked ? 'Profile saved and in use' : 'Profile saved, currently off');
+      await renderProfile(container);
+    })
+  );
+
+  container.append(
+    h(
+      'div',
+      { class: 'panel' },
+      h('h3', { text: 'Use my profile when ranking' }),
+      h('p', {
+        text: 'Optional. With this off, nothing here affects your boards and ranking works exactly as it does today. With it on, every board is scored against what you have actually done as well as what you typed.',
+      }),
+      h('label', { class: 'checkbox' }, enabled, h('span', { text: 'Rank jobs against my profile' }))
+    ),
+    h(
+      'div',
+      { class: 'panel' },
+      h('h3', { text: 'From your CV' }),
+      h('p', {
+        text: canParseWithModel
+          ? 'Paste it and we will pull out your skills and experience for you to check.'
+          : 'Paste it and we will pull out what we can. Adding an Anthropic API key makes this noticeably better.',
+      }),
+      cv,
+      h('div', { style: 'display:flex;gap:.5rem;margin:.75rem 0' }, parse),
+      parseOut
+    ),
+    h(
+      'div',
+      { class: 'panel' },
+      h('h3', { text: 'Details' }),
+      fieldRow('Headline', headline),
+      h('div', { class: 'row' }, fieldRow('Skills', skills, 'Comma separated.'), fieldRow('Years of experience', years)),
+      fieldRow('Must mention', mustHave, 'A job missing these is ranked down.'),
+      fieldRow(
+        'Deal-breakers',
+        dealBreakers,
+        'A job mentioning any of these is ruled out entirely, not just ranked lower.'
+      ),
+      h('div', { style: 'display:flex;justify-content:flex-end;margin-top:1rem' }, save)
+    )
+  );
+}
+
 // --- account & security ----------------------------------------------------
 
 async function openAccount() {
@@ -2241,6 +2349,7 @@ async function boot() {
 
   // Add the alerts entry point once the app chrome exists.
   $('.sidebar__section').append(
+    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Profile', onclick: openProfile }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Sources', onclick: openSources }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Alerts', onclick: openAlerts })
   );
