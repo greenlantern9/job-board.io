@@ -1624,11 +1624,19 @@ async function renderSources(container) {
           )
         );
         aiOut.append(
-          h('p', { class: 'label', style: 'margin-top:1rem', text: 'What this Worker can see' }),
+          h('p', {
+            class: 'label',
+            style: 'margin-top:1rem',
+            text: `What Worker "${res.bindings.worker}" can see`,
+          }),
           h('div', { class: 'list-rows' }, ...rows),
           h('p', {
             class: 'hint',
-            text: `All bindings on this Worker: ${allNames.join(', ')}`,
+            text: `All bindings: ${allNames.join(', ')}`,
+          }),
+          h('p', {
+            class: 'hint',
+            text: `If the Worker you are editing in the Cloudflare dashboard is not called "${res.bindings.worker}", the secrets are going somewhere this code never reads.`,
           })
         );
       }

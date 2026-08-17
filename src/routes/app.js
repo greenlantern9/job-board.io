@@ -621,7 +621,14 @@ function visibleBindings(env) {
     (name) => !expected.includes(name) && /anthropic|api.?key|secret|token|pepper/i.test(name)
   );
 
-  return { present, near, allNames: Object.keys(env).sort() };
+  return {
+    present,
+    near,
+    // Which Worker this actually ran on, so it can be compared against the one
+    // being edited in the dashboard.
+    worker: env.WORKER_NAME || '(unknown - redeploy to populate)',
+    allNames: Object.keys(env).sort(),
+  };
 }
 
 async function aiCheck(request, env, ctx) {

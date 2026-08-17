@@ -95,6 +95,11 @@
   // ANTHROPIC_API_KEY, RESEND_API_KEY) must be added as *Secret* / encrypted,
   // never as plain text - see README.
   "vars": {
+    // Echoed back by the AI check so a diagnostic can say which Worker it ran
+    // on. Secrets kept appearing correct in the dashboard while being invisible
+    // to the running code, and "which Worker am I actually looking at" was the
+    // question nothing could answer.
+    "WORKER_NAME": "job-board-io",
     "SITE_URL": "https://job-boards.io",
     "NOTIFY_FROM": "alerts@job-boards.io",
     "SCORING_MODEL": "claude-opus-5"
