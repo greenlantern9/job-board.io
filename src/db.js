@@ -140,6 +140,23 @@ const STATEMENTS = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedupe ON notifications(dedupe_key) WHERE dedupe_key <> ''`,
   `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC)`,
+  // One row per status change, with a copy of the posting as it read at the
+  // time. Postings get edited and delisted, so without this the record of what
+  // you actually applied to disappears exactly when you need it - preparing for
+  // the interview.
+  `CREATE TABLE IF NOT EXISTS job_events (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    board_id TEXT NOT NULL DEFAULT '',
+    from_status TEXT NOT NULL DEFAULT '',
+    to_status TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    snapshot TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_job_events_job ON job_events(job_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_job_events_user ON job_events(user_id, created_at DESC)`,
   // Optional candidate profile. One row per user; absent or disabled means the
   // ranking behaves exactly as it did before profiles existed.
   `CREATE TABLE IF NOT EXISTS profiles (

@@ -1839,6 +1839,113 @@ async function renderAlerts(container) {
 
 // --- insights --------------------------------------------------------------
 
+async function openApplications() {
+  const body = h('div', {});
+  showModal('Applications', body, { wide: true });
+  const { applications } = await api('/api/applications');
+
+  clear(body);
+  if (applications.length === 0) {
+    body.append(
+      h('div', {
+        class: 'notice',
+        text: 'Nothing archived yet. Anything you move to Applied is recorded here, along with a copy of the posting as it read at the time.',
+      })
+    );
+    return;
+  }
+
+  body.append(
+    h('p', {
+      class: 'hint',
+      style: 'margin-bottom:1rem',
+      text: 'Read from the archive rather than the board, so these survive a posting being taken down or a board being deleted.',
+    })
+  );
+
+  for (const app of applications) {
+    const detail = h('div', { hidden: true, style: 'margin-top:.75rem' });
+    let loaded = false;
+
+    body.append(
+      h(
+        'div',
+        { class: 'panel' },
+        h(
+          'div',
+          { style: 'display:flex;align-items:flex-start;gap:1rem' },
+          h(
+            'div',
+            { style: 'flex:1;min-width:0' },
+            h('h3', { text: app.title || '(untitled)' }),
+            h('p', {
+              style: 'margin:0',
+              text: [app.company, app.salary].filter(Boolean).join(' · '),
+            }),
+            h('span', {
+              class: 'list-row__sub',
+              text: `applied ${relativeTime(app.appliedAt)} · now ${statusLabel(app.outcome)}`,
+            })
+          ),
+          h('span', { class: `pill pill--${app.outcome}`, text: statusLabel(app.outcome) }),
+          h('button', {
+            class: 'btn btn--ghost btn--sm',
+            text: 'What I applied to',
+            onclick: async (event) => {
+              detail.hidden = !detail.hidden;
+              if (loaded || detail.hidden) return;
+              loaded = true;
+              const { history } = await api(`/api/jobs/history?id=${encodeURIComponent(app.jobId)}`);
+              const snap = app.snapshot || {};
+              clear(detail).append(
+                snap.description
+                  ? h(
+                      'div',
+                      {},
+                      h('div', { class: 'label', text: 'The posting, as it read when you applied' }),
+                      h('div', { class: 'drawer__desc', style: 'max-height:16rem', text: snap.description }),
+                      snap.profileHeadline
+                        ? h('p', {
+                            class: 'hint',
+                            text: `Your profile then: ${snap.profileHeadline}${(snap.profileSkills || []).length ? ` — ${snap.profileSkills.slice(0, 8).join(', ')}` : ''}`,
+                          })
+                        : null
+                    )
+                  : h('p', { class: 'hint', text: 'No copy of the posting was captured for this one.' }),
+                h('div', { class: 'label', style: 'margin-top:1rem', text: 'Timeline' }),
+                h(
+                  'div',
+                  { class: 'list-rows' },
+                  ...history.map((e) =>
+                    h(
+                      'div',
+                      { class: 'list-row' },
+                      h('span', { class: 'dot' }),
+                      h(
+                        'div',
+                        { class: 'list-row__main' },
+                        h('span', {
+                          class: 'list-row__title',
+                          text: `${e.from ? statusLabel(e.from) + ' → ' : ''}${statusLabel(e.to)}`,
+                        }),
+                        h('span', {
+                          class: 'list-row__sub',
+                          text: `${new Date(e.at).toLocaleString()}${e.note ? ` · ${e.note}` : ''}`,
+                        })
+                      )
+                    )
+                  )
+                )
+              );
+            },
+          })
+        ),
+        detail
+      )
+    );
+  }
+}
+
 async function openInsights() {
   const body = h('div', {});
   showModal('Insights', body, { wide: true });
@@ -2487,6 +2594,7 @@ async function boot() {
   // Add the alerts entry point once the app chrome exists.
   $('.sidebar__section').append(
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Profile', onclick: openProfile }),
+    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Applications', onclick: openApplications }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Insights', onclick: openInsights }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Sources', onclick: openSources }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Alerts', onclick: openAlerts })

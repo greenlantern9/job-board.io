@@ -22,6 +22,7 @@ import { curateBoard } from '../curate.js';
 import { applyIntent } from '../intent.js';
 import { getProfile, saveProfile, parseCvHeuristically, activeProfile } from '../profile.js';
 import { quietApplications, skillGapReport, FOLLOWUP_AFTER_DAYS } from '../insights.js';
+import { recordStatusChange, jobHistory, applicationHistory } from '../history.js';
 import { parseCvWithModel } from '../scoring.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
@@ -825,10 +826,38 @@ async function updateJob(request, env, ctx) {
     job.id,
     ctx.user.id
   );
+  // Archive the transition. Done after the update so the event cannot claim a
+  // move that failed to save, and never allowed to fail the request - losing a
+  // history row is regrettable, losing the status change is not acceptable.
+  if (statusMoved) {
+    try {
+      await recordStatusChange(env, {
+        job,
+        fromStatus: job.status,
+        toStatus: status,
+        note: body.eventNote,
+        profile: await activeProfile(env, ctx.user.id),
+      });
+    } catch (err) {
+      console.error('history write failed', job.id, err && err.message);
+    }
+  }
+
   return json({
     ok: true,
     job: jobToPublic(await queryOne(env, 'SELECT * FROM jobs WHERE id = ?', job.id)),
   });
+}
+
+async function jobHistoryRoute(request, env, ctx) {
+  const id = new URL(request.url).searchParams.get('id') || '';
+  return json({ history: await jobHistory(env, ctx.user.id, id) });
+}
+
+/** Everything applied to, read from the archive rather than the jobs table so
+ *  it survives postings being delisted and boards being deleted. */
+async function applicationsRoute(request, env, ctx) {
+  return json({ applications: await applicationHistory(env, ctx.user.id) });
 }
 
 async function bulkUpdateJobs(request, env, ctx) {
@@ -976,6 +1005,8 @@ export const APP_ROUTES = {
   'GET /api/notifications': { handler: notificationHistory },
 
   'GET /api/insights': { handler: insights },
+  'GET /api/jobs/history': { handler: jobHistoryRoute },
+  'GET /api/applications': { handler: applicationsRoute },
   'POST /api/jobs/followed-up': { handler: markFollowedUp },
 
   'GET /api/profile': { handler: readProfile },
