@@ -393,7 +393,7 @@ test('a job URL cannot be aimed back at this deployment', () => {
 
 test('a feed URL cannot be aimed back at our own host', () => {
   assert.throws(
-    () => validateFeedUrl('https://job-board.io/api/jobs', { selfHost: 'job-board.io' }),
+    () => validateFeedUrl('https://job-boards.io/api/jobs', { selfHost: 'job-boards.io' }),
     SourceError
   );
 });

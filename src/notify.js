@@ -17,7 +17,7 @@ export const TRIGGER_KINDS = ['instant', 'digest_daily', 'digest_weekly'];
 function signingSecret(env) {
   // Reuse the session pepper: this only signs unsubscribe links, whose worst
   // case is an attacker disabling their own notifications.
-  return env.SESSION_PEPPER || env.TOTP_ENC_KEY || 'job-board-dev-secret';
+  return env.SESSION_PEPPER || env.TOTP_ENC_KEY || 'job-boards-dev-secret';
 }
 
 export async function unsubscribeLink(env, rule) {

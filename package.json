@@ -1,5 +1,5 @@
 {
-  "name": "job-board-io",
+  "name": "job-boards-io",
   "version": "0.1.0",
   "private": true,
   "description": "job-boards.io - prioritized job tracking with AI scoring, on Cloudflare Workers + D1",

@@ -101,8 +101,8 @@ test('version scales with payload length and covers otpauth URIs', () => {
   assert.equal(encodeQR('a'.repeat(15)).version, 2);
 
   const uri =
-    'otpauth://totp/job-board.io%3Aperson%40example.com?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' +
-    '&issuer=job-board.io&algorithm=SHA1&digits=6&period=30';
+    'otpauth://totp/job-boards.io%3Aperson%40example.com?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' +
+    '&issuer=job-boards.io&algorithm=SHA1&digits=6&period=30';
   const qr = encodeQR(uri);
   assert.ok(qr.version >= 7 && qr.version <= 10, `expected version 7-10, got ${qr.version}`);
   assert.equal(qr.size, 17 + 4 * qr.version);
@@ -228,9 +228,9 @@ test('encode -> decode round trip recovers the payload', () => {
     'HELLO WORLD',
     'a'.repeat(14), // exactly fills version 1
     'a'.repeat(15), // forces version 2
-    'https://job-board.io/app',
-    'otpauth://totp/job-board.io%3Aperson%40example.com?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' +
-      '&issuer=job-board.io&algorithm=SHA1&digits=6&period=30',
+    'https://job-boards.io/app',
+    'otpauth://totp/job-boards.io%3Aperson%40example.com?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' +
+      '&issuer=job-boards.io&algorithm=SHA1&digits=6&period=30',
     'x'.repeat(213), // largest payload version 10 holds
   ];
   for (const payload of payloads) {

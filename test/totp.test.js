@@ -68,14 +68,14 @@ test('generated secrets are 160-bit and usable', async () => {
 
 test('otpauth URI carries the parameters authenticators expect', () => {
   const uri = otpauthUri({
-    issuer: 'job-board.io',
+    issuer: 'job-boards.io',
     account: 'person@example.com',
     secret: 'JBSWY3DPEHPK3PXP',
   });
-  assert.ok(uri.startsWith('otpauth://totp/job-board.io%3Aperson%40example.com?'));
+  assert.ok(uri.startsWith('otpauth://totp/job-boards.io%3Aperson%40example.com?'));
   const params = new URLSearchParams(uri.split('?')[1]);
   assert.equal(params.get('secret'), 'JBSWY3DPEHPK3PXP');
-  assert.equal(params.get('issuer'), 'job-board.io');
+  assert.equal(params.get('issuer'), 'job-boards.io');
   assert.equal(params.get('digits'), '6');
   assert.equal(params.get('period'), '30');
 });
