@@ -1181,6 +1181,7 @@ function openBoardEditor(existing) {
   const locations = h('input', { class: 'input', value: filters.locations || '', placeholder: 'new york, london' });
   const minSalary = h('input', { class: 'input', type: 'number', min: '0', step: '5000', value: String(filters.minSalary || 0) });
   const remoteOnly = h('input', { type: 'checkbox', checked: Boolean(filters.remoteOnly) });
+  const scoutToggle = h('input', { type: 'checkbox', checked: true });
   const LEVELS = [
     ['0', 'Internship'],
     ['1', 'Junior'],
@@ -1287,6 +1288,7 @@ function openBoardEditor(existing) {
           companies: companies.value,
           companyMode: companyMode.value,
         },
+        scout: scoutToggle.checked,
       };
       const result = await api(board ? '/api/boards/update' : '/api/boards/create', {
         method: 'POST',
@@ -1318,6 +1320,27 @@ function openBoardEditor(existing) {
       prompt,
       'Plain English, the way you would tell a friend. This is what finds your sources and ranks every job — it is the only part that really matters.'
     ),
+
+    // Visible rather than buried under Advanced, because it spends money. For
+    // photography, events, coaching and trades the job boards hold nothing and
+    // this is the only part that finds anything, so it defaults to on - but it
+    // says what it costs, and turning it off is one click.
+    board
+      ? null
+      : h(
+          'div',
+          { class: 'field' },
+          h(
+            'label',
+            { class: 'checkbox' },
+            scoutToggle,
+            h('span', { text: 'Also search the open web' })
+          ),
+          h('span', {
+            class: 'hint',
+            text: 'Finds organisations to approach directly — retreats, studios, venues, local businesses — and how to approach them. Job boards do not carry that work. Costs a few cents from your daily AI budget.',
+          })
+        ),
 
     h(
       'details',
@@ -1849,6 +1872,39 @@ async function renderAlerts(container) {
 
 // --- insights --------------------------------------------------------------
 
+/** One lead, rendered the same whether it came from storage or a fresh run. */
+function leadCard(lead) {
+  const mark = (status) => async () => {
+    await api('/api/leads/update', { method: 'POST', body: { id: lead.id, status } });
+    toast(status === 'contacted' ? 'Marked as contacted' : 'Dismissed');
+  };
+  return h(
+    'div',
+    { class: 'panel' },
+    h('h3', { text: lead.name }),
+    h('p', { style: 'margin:0', text: lead.summary }),
+    lead.location ? h('span', { class: 'list-row__sub', text: lead.location }) : null,
+    lead.signal
+      ? h('p', { class: 'notice notice--ok', style: 'margin:.75rem 0', text: 'Signal: ' + lead.signal })
+      : null,
+    h('p', { style: 'margin:.75rem 0 0', text: lead.relevance }),
+    h('div', { class: 'label', style: 'margin-top:1rem', text: 'How to approach them' }),
+    h('p', { style: 'margin:0', text: lead.approach }),
+    h(
+      'div',
+      { style: 'display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap' },
+      lead.website
+        ? h('a', { class: 'btn btn--ghost btn--sm', href: safeHref(lead.website), target: '_blank', rel: 'noopener noreferrer', text: 'Website' })
+        : null,
+      lead.contactUrl
+        ? h('a', { class: 'btn btn--ghost btn--sm', href: safeHref(lead.contactUrl), target: '_blank', rel: 'noopener noreferrer', text: 'Get in touch' })
+        : null,
+      lead.id ? h('button', { class: 'btn btn--ghost btn--sm', text: 'Contacted', onclick: mark('contacted') }) : null,
+      lead.id ? h('button', { class: 'btn btn--ghost btn--sm', text: 'Dismiss', onclick: mark('dismissed') }) : null
+    )
+  );
+}
+
 async function openScout() {
   if (!state.boardId) return toast('Open a board first');
   const body = h('div', {});
@@ -1865,7 +1921,20 @@ async function openScout() {
   );
 
   const out = h('div', {});
-  const go = h('button', { class: 'btn btn--primary', text: 'Search' });
+  const go = h('button', { class: 'btn btn--primary', text: 'Search again' });
+
+  // Show what is already stored before offering to spend anything. A board
+  // created with scouting on already has leads, and charging again to look at
+  // them would be indefensible.
+  const existing = await api('/api/leads?boardId=' + encodeURIComponent(state.boardId));
+  const render = (leads, note) => {
+    clear(out);
+    if (note) out.append(h('p', { class: 'hint', text: note }));
+    for (const lead of leads) out.append(leadCard(lead));
+  };
+  if ((existing.leads || []).length) {
+    render(existing.leads, existing.leads.length + ' leads found so far.');
+  }
   go.addEventListener(
     'click',
     busy(go, 'Searching the web…', async () => {
@@ -1884,45 +1953,7 @@ async function openScout() {
         })
       );
 
-      for (const lead of res.leads) {
-        out.append(
-          h(
-            'div',
-            { class: 'panel' },
-            h('h3', { text: lead.name }),
-            h('p', { style: 'margin:0', text: lead.summary }),
-            lead.location ? h('span', { class: 'list-row__sub', text: lead.location }) : null,
-            lead.signal
-              ? h('p', { class: 'notice notice--ok', style: 'margin:.75rem 0', text: `Signal: ${lead.signal}` })
-              : null,
-            h('p', { style: 'margin:.75rem 0 0', text: lead.relevance }),
-            h('div', { class: 'label', style: 'margin-top:1rem', text: 'How to approach them' }),
-            h('p', { style: 'margin:0', text: lead.approach }),
-            h(
-              'div',
-              { style: 'display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap' },
-              lead.website
-                ? h('a', {
-                    class: 'btn btn--ghost btn--sm',
-                    href: safeHref(lead.website),
-                    target: '_blank',
-                    rel: 'noopener noreferrer',
-                    text: 'Website',
-                  })
-                : null,
-              lead.contactUrl
-                ? h('a', {
-                    class: 'btn btn--ghost btn--sm',
-                    href: safeHref(lead.contactUrl),
-                    target: '_blank',
-                    rel: 'noopener noreferrer',
-                    text: 'Get in touch',
-                  })
-                : null
-            )
-          )
-        );
-      }
+      render(res.leads, `${res.leads.length} leads from ${res.searches} searches.`);
     })
   );
 

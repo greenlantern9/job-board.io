@@ -140,6 +140,29 @@ const STATEMENTS = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedupe ON notifications(dedupe_key) WHERE dedupe_key <> ''`,
   `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC)`,
+  // Leads from a scout run: organisations to approach, not postings to apply
+  // to. Kept in their own table rather than as rows in jobs, because
+  // conflating "somewhere worth writing to" with "a job you can apply for"
+  // would misrepresent both - and a lead has no posting to expire.
+  `CREATE TABLE IF NOT EXISTS leads (
+    id TEXT PRIMARY KEY,
+    board_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    website TEXT NOT NULL DEFAULT '',
+    contact_url TEXT NOT NULL DEFAULT '',
+    relevance TEXT NOT NULL DEFAULT '',
+    approach TEXT NOT NULL DEFAULT '',
+    signal TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (board_id, website)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_leads_board ON leads(board_id, created_at DESC)`,
   // Model calls per account per day. The ceiling is enforced rather than
   // advised, because every other path degrades silently when the model is
   // unavailable - so an overspend would have no symptom until the bill.

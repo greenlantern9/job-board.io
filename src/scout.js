@@ -13,6 +13,8 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { reserveCall } from './budget.js';
+import { queryAll, run, nowIso } from './db.js';
+import { newId } from './crypto.js';
 import { safeExternalUrl } from './sources.js';
 
 /** Searches and page reads allowed per run. Every search is billed on top of
@@ -220,4 +222,96 @@ export async function scoutLeads(env, { userId, prompt, location = '', profile =
   }
 
   return { leads, warnings, searches };
+}
+
+/**
+ * Persist a scout run's leads against a board.
+ *
+ * Upserted on (board_id, website): re-scouting refreshes what an organisation
+ * looks like now without duplicating it or losing the status the user has
+ * already set on it. Their own notes and status are never overwritten by a
+ * later run - the research is ours to refresh, the record of what they did
+ * about it is theirs.
+ */
+export async function saveLeads(env, { boardId, userId, leads }) {
+  const now = nowIso();
+  let saved = 0;
+
+  for (const lead of leads) {
+    await run(
+      env,
+      `INSERT INTO leads (id, board_id, user_id, name, summary, location, website,
+         contact_url, relevance, approach, signal, status, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', '', ?, ?)
+       ON CONFLICT (board_id, website) DO UPDATE SET
+         name = excluded.name,
+         summary = excluded.summary,
+         location = excluded.location,
+         contact_url = excluded.contact_url,
+         relevance = excluded.relevance,
+         approach = excluded.approach,
+         signal = excluded.signal,
+         updated_at = excluded.updated_at`,
+      newId('lead_'),
+      boardId,
+      userId,
+      lead.name,
+      lead.summary,
+      lead.location,
+      lead.website,
+      lead.contactUrl,
+      lead.relevance,
+      lead.approach,
+      lead.signal,
+      now,
+      now
+    );
+    saved++;
+  }
+  return saved;
+}
+
+export async function listLeads(env, boardId, userId) {
+  const rows = await queryAll(
+    env,
+    `SELECT * FROM leads WHERE board_id = ? AND user_id = ?
+     ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'contacted' THEN 1 ELSE 2 END, created_at DESC`,
+    boardId,
+    userId
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    summary: row.summary,
+    location: row.location,
+    website: row.website,
+    contactUrl: row.contact_url,
+    relevance: row.relevance,
+    approach: row.approach,
+    signal: row.signal,
+    status: row.status,
+    notes: row.notes,
+    createdAt: row.created_at,
+  }));
+}
+
+/**
+ * Scout and store in one step, for the paths that run unattended.
+ *
+ * Swallows its own failures deliberately: this runs in the background after a
+ * board is created, and a failed search must not take the board creation with
+ * it. The user has a board either way; the leads are a bonus that either
+ * arrives or does not.
+ */
+export async function scoutAndStore(env, { boardId, userId, prompt, location, profile }) {
+  try {
+    const result = await scoutLeads(env, { userId, prompt, location, profile });
+    if (result.leads.length > 0) {
+      await saveLeads(env, { boardId, userId, leads: result.leads });
+    }
+    return result;
+  } catch (err) {
+    console.error('scout failed for board', boardId, err && err.message);
+    return { leads: [], warnings: [String((err && err.message) || err)], searches: 0 };
+  }
 }

@@ -6,6 +6,7 @@
 // caller decides what to persist.
 
 import { detectSeniorityLevel } from './rank.js';
+import { expandPhrase } from './synonyms.js';
 
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_DESCRIPTION_CHARS = 4000;
@@ -456,10 +457,30 @@ function wordMatcher(word) {
  * Weight reflects how much a hit tells us: matching a multi-word term is strong
  * evidence on its own, matching the bare word "manager" is not.
  */
+/** Escape a synonym for use inside a regex alternation, allowing any run of
+ *  whitespace where the term has a space ("post production" / "post  production"). */
+function alternationSafe(word) {
+  return word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+}
+
 function compileTerms(terms) {
   return terms.map((term) => {
-    const words = term.split(' ').filter(Boolean);
-    return { res: words.map(wordMatcher), weight: words.length > 1 ? 2 : 1 };
+    // Each slot is a family, not a word: "photographer" is satisfied by
+    // "videographer", "content creator" or "visual storyteller" too, so nobody
+    // has to guess the employer's vocabulary. The phrase still has to be
+    // satisfied in full - expansion widens each slot, it does not drop any.
+    const slots = expandPhrase(term).filter((family) => family.length > 0);
+    if (slots.length === 0) return { res: [], weight: 1 };
+    const res = slots.map((family) => {
+      const alternatives = family
+        .map(alternationSafe)
+        // Longest first, so "content creator" is tried before "creator" and the
+        // alternation cannot settle for the shorter prefix.
+        .sort((a, b) => b.length - a.length)
+        .join('|');
+      return new RegExp(`(?:^|[^a-z0-9+#])(?:${alternatives})(?![a-z0-9+#])`, 'i');
+    });
+    return { res, weight: slots.length > 1 ? 2 : 1 };
   });
 }
 

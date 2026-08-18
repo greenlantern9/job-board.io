@@ -23,7 +23,7 @@ import { applyIntent } from '../intent.js';
 import { getProfile, saveProfile, parseCvHeuristically, activeProfile } from '../profile.js';
 import { quietApplications, skillGapReport, FOLLOWUP_AFTER_DAYS } from '../insights.js';
 import { recordStatusChange, jobHistory, applicationHistory } from '../history.js';
-import { scoutLeads } from '../scout.js';
+import { scoutLeads, scoutAndStore, saveLeads, listLeads } from '../scout.js';
 import { parseCvWithModel } from '../scoring.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
@@ -347,7 +347,34 @@ async function scoutBoard(request, env, ctx) {
     profile: await activeProfile(env, ctx.user.id),
   });
 
-  return json(result);
+  if (result.leads.length > 0) {
+    await saveLeads(env, { boardId: board.id, userId: ctx.user.id, leads: result.leads });
+  }
+  return json({ ...result, leads: await listLeads(env, board.id, ctx.user.id) });
+}
+
+/** Leads already found for a board, without spending anything to look again. */
+async function readLeads(request, env, ctx) {
+  const id = new URL(request.url).searchParams.get('boardId') || '';
+  return json({ leads: await listLeads(env, id, ctx.user.id) });
+}
+
+async function updateLead(request, env, ctx) {
+  const body = await readJson(request);
+  const status = ['new', 'contacted', 'replied', 'dismissed'].includes(body.status)
+    ? body.status
+    : 'new';
+  const result = await run(
+    env,
+    'UPDATE leads SET status = ?, notes = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+    status,
+    String(body.notes || '').slice(0, 2000),
+    nowIso(),
+    String(body.id || ''),
+    ctx.user.id
+  );
+  if (!(result.meta && result.meta.changes)) return notFound('Lead not found.');
+  return json({ ok: true });
 }
 
 async function curateNow(request, env, ctx) {
@@ -406,12 +433,30 @@ async function createBoard(request, env, ctx) {
   // Connecting sources is not the user's job. Discovery and the first pull run
   // in the background so the board is useful by the time they look at it,
   // rather than presenting an empty screen and a setup task.
+  // Scouting the open web is opt-out rather than opt-in, because for whole
+  // categories of work - photography, events, coaching, trades - the job boards
+  // hold nothing and the leads are the entire product. It costs real money, so
+  // the form says so and the flag is honoured here rather than assumed.
+  const alsoScout = body.scout !== false;
+
   ctx.waitUntil(
     (async () => {
       const selfHost = new URL(request.url).hostname;
       await curateBoard(env, boardWithFilters(created), { selfHost });
       const fresh = await queryOne(env, 'SELECT * FROM boards WHERE id = ?', id);
       if (fresh) await refreshBoard(env, fresh, { selfHost });
+
+      // After the refresh, not before: if the boards happen to carry this work
+      // the user sees it sooner, and the scout is the expensive half.
+      if (alsoScout) {
+        await scoutAndStore(env, {
+          boardId: id,
+          userId: ctx.user.id,
+          prompt: created.prompt,
+          location: parseJson(created.filters, {}).locations || '',
+          profile: await activeProfile(env, ctx.user.id),
+        });
+      }
     })().catch((err) => console.error('board bootstrap failed', err && err.stack))
   );
 
@@ -1025,6 +1070,8 @@ export const APP_ROUTES = {
   'POST /api/boards/rescore': { handler: rescoreBoard },
   'POST /api/boards/curate': { handler: curateNow },
   'POST /api/boards/scout': { handler: scoutBoard },
+  'GET /api/leads': { handler: readLeads },
+  'POST /api/leads/update': { handler: updateLead },
   'POST /api/boards/add-jobs': { handler: addJobs },
 
   'GET /api/sources': { handler: listSources },
