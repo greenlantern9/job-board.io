@@ -3,7 +3,7 @@
   // deploy`), NOT as a Pages project. The Worker owns every route so that auth,
   // security headers, and the apex redirect apply to pages as well as /api/*.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "job-board-io",
+  "name": "job-boards-io",
   "main": "worker.js",
   "compatibility_date": "2026-08-01",
   "observability": { "enabled": true },
@@ -15,10 +15,11 @@
   //
   // www is listed because the Worker 301s it to the apex; if www never reaches
   // the Worker, that redirect can never run.
-  "routes": [
-    { "pattern": "job-boards.io", "custom_domain": true },
-    { "pattern": "www.job-boards.io", "custom_domain": true }
-  ],
+  // CUTOVER IN PROGRESS - restored once job-board-io releases the hostname.
+  // "routes": [
+  //   { "pattern": "job-boards.io", "custom_domain": true },
+  //   { "pattern": "www.job-boards.io", "custom_domain": true }
+  // ],
 
   // run_worker_first matters: by default a request matching an uploaded file is
   // served straight from the edge and the Worker never runs, which would skip
@@ -99,7 +100,7 @@
     // on. Secrets kept appearing correct in the dashboard while being invisible
     // to the running code, and "which Worker am I actually looking at" was the
     // question nothing could answer.
-    "WORKER_NAME": "job-board-io",
+    "WORKER_NAME": "job-boards-io",
     "SITE_URL": "https://job-boards.io",
     "NOTIFY_FROM": "alerts@job-boards.io",
     "SCORING_MODEL": "claude-opus-5"
