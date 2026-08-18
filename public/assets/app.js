@@ -4,6 +4,8 @@
 // helper, never innerHTML - the one exception is the QR SVG, which the Worker
 // generates from our own encoder.
 
+import { readResumeFile } from './docparse.js';
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -2113,6 +2115,47 @@ async function renderProfile(container) {
   const years = h('input', { class: 'input', type: 'number', min: '0', max: '60', value: String(p.yearsExperience || 0) });
   const cv = h('textarea', { class: 'textarea', style: 'min-height:9rem', placeholder: 'Paste your CV here…', text: p.summary || '' });
   const parseOut = h('div', {});
+  const fileOut = h('div', {});
+
+  /**
+   * Read a dropped or chosen file into the box.
+   *
+   * Parsing happens here in the browser, so the file itself is never uploaded -
+   * only the text, and only when the user presses save. Failures name the cause
+   * and the fix rather than just refusing.
+   */
+  const fileInput = h('input', {
+    type: 'file',
+    class: 'visually-hidden',
+    accept:
+      '.txt,.md,.docx,.pdf,text/plain,text/markdown,application/pdf,' +
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    onchange: async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) await takeFile(file);
+      // Cleared so picking the same file twice still fires a change event.
+      event.target.value = '';
+    },
+  });
+
+  const takeFile = async (file) => {
+    clear(fileOut);
+    try {
+      const { text, kind } = await readResumeFile(file);
+      if (!text || text.trim().length < 40) {
+        throw new Error('That file came out almost empty. Paste the text below instead.');
+      }
+      cv.value = text;
+      fileOut.append(
+        h('div', {
+          class: 'notice notice--ok',
+          text: `Read ${file.name} (${kind}, ${text.length.toLocaleString()} characters). Check it below, then press "Read my CV".`,
+        })
+      );
+    } catch (err) {
+      fileOut.append(h('div', { class: 'notice notice--warn', text: err.message }));
+    }
+  };
 
   const parse = h('button', { class: 'btn btn--ghost', text: 'Read my CV' });
   parse.addEventListener(
@@ -2173,9 +2216,41 @@ async function renderProfile(container) {
       h('h3', { text: 'From your CV' }),
       h('p', {
         text: canParseWithModel
-          ? 'Paste it and we will pull out your skills and experience for you to check.'
-          : 'Paste it and we will pull out what we can. Adding an Anthropic API key makes this noticeably better.',
+          ? 'Upload it or paste it, and we will pull out your skills and experience for you to check.'
+          : 'Upload it or paste it, and we will pull out what we can. Adding an Anthropic API key makes this noticeably better.',
       }),
+      h(
+        'div',
+        {
+          class: 'dropzone',
+          ondragover: (event) => {
+            event.preventDefault();
+            event.currentTarget.classList.add('is-over');
+          },
+          ondragleave: (event) => event.currentTarget.classList.remove('is-over'),
+          ondrop: async (event) => {
+            event.preventDefault();
+            event.currentTarget.classList.remove('is-over');
+            const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+            if (file) await takeFile(file);
+          },
+        },
+        fileInput,
+        h('span', { class: 'dropzone__icon', 'aria-hidden': 'true', text: '↥' }),
+        h(
+          'span',
+          {},
+          h('button', {
+            class: 'linkish',
+            type: 'button',
+            text: 'Choose a file',
+            onclick: () => fileInput.click(),
+          }),
+          ' or drop it here'
+        ),
+        h('span', { class: 'dropzone__hint mono', text: '.docx · .pdf · .txt · .md — never leaves your browser' })
+      ),
+      fileOut,
       cv,
       h('div', { style: 'display:flex;gap:.5rem;margin:.75rem 0' }, parse),
       parseOut

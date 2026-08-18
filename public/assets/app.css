@@ -1454,3 +1454,41 @@
   border-color: rgba(242, 109, 97, 0.5);
   color: #ffb3ab;
 }
+
+/* --- CV dropzone -------------------------------------------------------- */
+/* The file is parsed in the browser and never uploaded, which is worth saying
+   on the control itself rather than burying in a privacy page. */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 1.4rem 1rem;
+  margin-bottom: 0.75rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--muted);
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+
+.dropzone.is-over {
+  border-color: var(--accent);
+  border-style: solid;
+  background: var(--accent-wash);
+}
+
+.dropzone__icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.dropzone__hint {
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
