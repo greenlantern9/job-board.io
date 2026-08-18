@@ -167,6 +167,29 @@ async function handleRequest(request, env, executionCtx) {
     );
   }
 
+  // Deployment status, deliberately public and deliberately minimal.
+  //
+  // Whether a key is configured is not a secret - the app's behaviour already
+  // makes it obvious, since ranking visibly degrades without one. What this
+  // adds is the ability to tell *which* Worker is answering for this domain,
+  // which is exactly the question that could not be answered while secrets
+  // appeared correct in the dashboard and invisible to the running code.
+  //
+  // Names and booleans only. No values, no key prefixes, no binding list.
+  if (url.pathname === '/health') {
+    return json({
+      ok: true,
+      worker: env.WORKER_NAME || '(unset - deploy has not run since this was added)',
+      site: env.SITE_URL || '',
+      features: {
+        aiRanking: Boolean(env.ANTHROPIC_API_KEY),
+        twoFactor: Boolean(env.TOTP_ENC_KEY),
+        email: Boolean(env.RESEND_API_KEY),
+      },
+      time: nowIso(),
+    });
+  }
+
   if (url.pathname === '/unsubscribe') {
     const ok = await applyUnsubscribe(env, url.searchParams.get('token') || '');
     return htmlPage({
