@@ -1849,6 +1849,86 @@ async function renderAlerts(container) {
 
 // --- insights --------------------------------------------------------------
 
+async function openScout() {
+  if (!state.boardId) return toast('Open a board first');
+  const body = h('div', {});
+  showModal('Scout the web', body, { wide: true });
+
+  clear(body).append(
+    h('p', {
+      text: 'Some work is never posted to a job board — retreats, weddings, local coaching, small studios. This searches the open web for organisations worth approaching directly, and tells you how to approach them.',
+    }),
+    h('p', {
+      class: 'hint',
+      text: 'These are leads to contact, not postings to apply to, so they are kept separate from your board. Each run costs a few cents and counts against your daily AI budget.',
+    })
+  );
+
+  const out = h('div', {});
+  const go = h('button', { class: 'btn btn--primary', text: 'Search' });
+  go.addEventListener(
+    'click',
+    busy(go, 'Searching the web…', async () => {
+      const res = await api('/api/boards/scout', { method: 'POST', body: { id: state.boardId } });
+      clear(out);
+
+      for (const warning of res.warnings || []) {
+        out.append(h('div', { class: 'notice notice--warn', text: warning }));
+      }
+      if (!res.leads || res.leads.length === 0) return;
+
+      out.append(
+        h('p', {
+          class: 'hint',
+          text: `${res.leads.length} leads from ${res.searches} searches.`,
+        })
+      );
+
+      for (const lead of res.leads) {
+        out.append(
+          h(
+            'div',
+            { class: 'panel' },
+            h('h3', { text: lead.name }),
+            h('p', { style: 'margin:0', text: lead.summary }),
+            lead.location ? h('span', { class: 'list-row__sub', text: lead.location }) : null,
+            lead.signal
+              ? h('p', { class: 'notice notice--ok', style: 'margin:.75rem 0', text: `Signal: ${lead.signal}` })
+              : null,
+            h('p', { style: 'margin:.75rem 0 0', text: lead.relevance }),
+            h('div', { class: 'label', style: 'margin-top:1rem', text: 'How to approach them' }),
+            h('p', { style: 'margin:0', text: lead.approach }),
+            h(
+              'div',
+              { style: 'display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap' },
+              lead.website
+                ? h('a', {
+                    class: 'btn btn--ghost btn--sm',
+                    href: safeHref(lead.website),
+                    target: '_blank',
+                    rel: 'noopener noreferrer',
+                    text: 'Website',
+                  })
+                : null,
+              lead.contactUrl
+                ? h('a', {
+                    class: 'btn btn--ghost btn--sm',
+                    href: safeHref(lead.contactUrl),
+                    target: '_blank',
+                    rel: 'noopener noreferrer',
+                    text: 'Get in touch',
+                  })
+                : null
+            )
+          )
+        );
+      }
+    })
+  );
+
+  body.append(h('div', { style: 'display:flex;gap:.5rem;margin:1rem 0' }, go), out);
+}
+
 async function openApplications() {
   const body = h('div', {});
   showModal('Applications', body, { wide: true });
@@ -2679,6 +2759,7 @@ async function boot() {
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Profile', onclick: openProfile }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Applications', onclick: openApplications }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Insights', onclick: openInsights }),
+    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Scout the web', onclick: openScout }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Sources', onclick: openSources }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Alerts', onclick: openAlerts })
   );

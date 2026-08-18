@@ -23,6 +23,7 @@ import { applyIntent } from '../intent.js';
 import { getProfile, saveProfile, parseCvHeuristically, activeProfile } from '../profile.js';
 import { quietApplications, skillGapReport, FOLLOWUP_AFTER_DAYS } from '../insights.js';
 import { recordStatusChange, jobHistory, applicationHistory } from '../history.js';
+import { scoutLeads } from '../scout.js';
 import { parseCvWithModel } from '../scoring.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { listNotifications, ruleToPublic, TRIGGER_KINDS } from '../notify.js';
@@ -316,6 +317,39 @@ async function parseProfile(request, env, ctx) {
 }
 
 /** Re-run source discovery on demand, from the board's Sources panel. */
+/**
+ * Research the open web for work no job board carries.
+ *
+ * Separate from the board's job list on purpose: these are organisations to
+ * approach, not postings to apply to, and conflating the two would misrepresent
+ * both. Nothing is stored - a scout run is a piece of research the user reads
+ * and acts on, and persisting stale leads would be worse than re-running it.
+ */
+async function scoutBoard(request, env, ctx) {
+  const body = await readJson(request);
+  const board = await queryOne(
+    env,
+    'SELECT * FROM boards WHERE id = ? AND user_id = ?',
+    String(body.id || ''),
+    ctx.user.id
+  );
+  if (!board) return notFound('Board not found.');
+
+  if (!(await allowRate(env.API_RATE_LIMIT, `scout:${ctx.user.id}`))) {
+    return tooMany('Give it a minute between searches.');
+  }
+
+  const filters = parseJson(board.filters, {});
+  const result = await scoutLeads(env, {
+    userId: ctx.user.id,
+    prompt: board.prompt,
+    location: filters.locations || '',
+    profile: await activeProfile(env, ctx.user.id),
+  });
+
+  return json(result);
+}
+
 async function curateNow(request, env, ctx) {
   const body = await readJson(request);
   const row = await ownedBoard(env, ctx.user.id, body.id);
@@ -990,6 +1024,7 @@ export const APP_ROUTES = {
   'POST /api/boards/refresh': { handler: refreshNow },
   'POST /api/boards/rescore': { handler: rescoreBoard },
   'POST /api/boards/curate': { handler: curateNow },
+  'POST /api/boards/scout': { handler: scoutBoard },
   'POST /api/boards/add-jobs': { handler: addJobs },
 
   'GET /api/sources': { handler: listSources },
