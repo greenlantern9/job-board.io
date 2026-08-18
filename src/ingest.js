@@ -377,9 +377,33 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
 
   Object.assign(summary, await reapClosedJobs(env, board, { reapable, seen, now }));
 
-  const scoring = await scoreUnscored(env, board);
-  summary.warnings.push(...scoring.warnings);
-  summary.scored = scoring.scored;
+  // Only pay to score when this run actually brought something back.
+  //
+  // scoreUnscored picks up every unscored job on the board, not just the ones
+  // just added - so without this gate a refresh that matched nothing still
+  // spent model calls on leftovers from an earlier run that hit a ceiling. The
+  // user saw no new jobs and was charged anyway, which is the worst possible
+  // combination. Leftovers are picked up by the next productive refresh, or
+  // immediately via Rescore, which is an explicit, user-initiated spend.
+  if (summary.added > 0) {
+    const scoring = await scoreUnscored(env, board);
+    summary.warnings.push(...scoring.warnings);
+    summary.scored = scoring.scored;
+    summary.modelCalls = scoring.modelCalls || 0;
+  } else {
+    summary.scored = 0;
+    summary.modelCalls = 0;
+    const pending = await queryOne(
+      env,
+      `SELECT COUNT(*) AS n FROM jobs WHERE board_id = ? AND scored_at = ''`,
+      board.id
+    );
+    if (pending && pending.n > 0) {
+      summary.warnings.push(
+        `${pending.n} jobs are still unranked. Nothing new arrived, so no AI spend was made - use Rescore to rank them now.`
+      );
+    }
+  }
 
   await run(
     env,
@@ -498,7 +522,7 @@ export async function scoreUnscored(env, board, { limit = 500, force = false } =
   // Null unless the user has a profile and has switched it on, so ranking with
   // no profile behaves exactly as it did before profiles existed.
   const profile = await activeProfile(env, board.user_id);
-  const { results, warnings } = await scoreJobs(env, jobs, board, { profile });
+  const { results, warnings, usedModel } = await scoreJobs(env, jobs, board, { profile });
   const now = nowIso();
 
   // Chunked: a single batch of several hundred statements risks tripping D1's
@@ -512,7 +536,7 @@ export async function scoreUnscored(env, board, { limit = 500, force = false } =
     await env.DB.batch(updates.slice(i, i + 100));
   }
 
-  return { scored: results.size, warnings };
+  return { scored: results.size, warnings, modelCalls: usedModel ? 1 : 0 };
 }
 
 /** Boards whose schedule has come due. Driven by the cron trigger. */

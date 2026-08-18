@@ -2694,6 +2694,21 @@ function wireApp() {
       if (summary.updated) parts.push(`${summary.updated} updated`);
       if (summary.filteredOut) parts.push(`${summary.filteredOut} filtered out`);
       toast(parts.join(', '));
+
+      // A refresh that found nothing used to pass as a toast that vanished in
+      // three seconds, leaving no account of what happened or what it cost.
+      // Say it plainly instead, with the numbers and the spend.
+      if (summary.added === 0) {
+        const spend =
+          summary.modelCalls > 0
+            ? `${summary.modelCalls} AI call used.`
+            : 'No AI spend — nothing new to rank.';
+        banner(
+          `Nothing new. Checked ${summary.sourcesRun || 0} sources and read ${summary.fetched || 0} listings; ` +
+            `${summary.filteredOut || 0} did not match this board's criteria. ${spend}`,
+          'warn'
+        );
+      }
       if (summary.warnings && summary.warnings.length) banner(summary.warnings.join(' · '), 'warn');
     })(event);
   });
