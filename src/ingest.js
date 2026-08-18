@@ -96,6 +96,47 @@ function isTooOld(job) {
   return Number.isFinite(age) && age > MAX_AGE_DAYS;
 }
 
+/**
+ * How many sources are read at once.
+ *
+ * Chosen against the Worker's subrequest ceiling rather than for raw speed:
+ * concurrency does not change how many requests are made, only how long they
+ * take in total, but a large fan-out makes a slow source harder to attribute
+ * and gives third parties a burst they did not ask for. Eight collapses the
+ * wait without any of that.
+ */
+const FETCH_CONCURRENCY = 8;
+
+/**
+ * Read every source concurrently, returning results in the original order.
+ *
+ * Never rejects: a source that fails comes back carrying its error, because one
+ * dead company page must not stop the rest of the board from updating - the
+ * same guarantee the sequential version made.
+ */
+async function fetchAllSources(sources, options) {
+  const results = new Array(sources.length);
+  let next = 0;
+
+  const worker = async () => {
+    for (;;) {
+      const index = next++;
+      if (index >= sources.length) return;
+      const source = sources[index];
+      try {
+        results[index] = { source, jobs: await fetchSource(source, options) };
+      } catch (error) {
+        results[index] = { source, jobs: [], error };
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(FETCH_CONCURRENCY, sources.length) }, worker)
+  );
+  return results;
+}
+
 export function boardWithFilters(row) {
   return { ...row, filters: parseJson(row.filters, {}) };
 }
@@ -167,24 +208,38 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
   // these can tell us that a job is gone by not mentioning it.
   const reapable = [];
 
-  for (const source of sources) {
-    let jobs;
-    try {
-      jobs = await fetchSource(source, { selfHost, category: activeFilters.category });
-      summary.sourcesRun++;
-      if (ATS_KINDS.includes(source.kind)) reapable.push(source);
-    } catch (err) {
+  // Fetching runs concurrently; processing stays in source order.
+  //
+  // Twenty-six sources fetched one after another meant a board creation took
+  // longer than the client was willing to wait for it, so a board that was
+  // working perfectly well looked stuck until the user refreshed by hand. The
+  // work was never the problem - the waiting in series was.
+  //
+  // Order still matters after the fetch: the first source to report a job wins
+  // it, so results are walked in the original source order regardless of which
+  // network call happened to return first. Same corpus, same winner, same
+  // ranking - only the waiting is different.
+  const fetched = await fetchAllSources(sources, {
+    selfHost,
+    category: activeFilters.category,
+  });
+
+  for (const { source, jobs, error } of fetched) {
+    if (error) {
       summary.sourcesFailed++;
-      summary.warnings.push(`${source.label || source.identifier}: ${err.message}`);
+      summary.warnings.push(`${source.label || source.identifier}: ${error.message}`);
       await run(
         env,
         `UPDATE sources SET last_status = 'error', last_error = ?, last_fetched = ? WHERE id = ?`,
-        String(err.message).slice(0, 300),
+        String(error.message).slice(0, 300),
         nowIso(),
         source.id
       );
       continue;
     }
+
+    summary.sourcesRun++;
+    if (ATS_KINDS.includes(source.kind)) reapable.push(source);
 
     let kept = 0;
     for (const job of jobs) {

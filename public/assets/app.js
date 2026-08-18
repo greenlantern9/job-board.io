@@ -817,21 +817,77 @@ function renderAddJobs(active) {
   host.append(btn);
 }
 
+/**
+ * Delay before the nth check while a new board provisions.
+ *
+ * Starts almost immediately, then backs off. A flat ten seconds meant the first
+ * look happened after provisioning had usually already finished, so the user
+ * watched a spinner do nothing on a board that was ready - which reads as
+ * stuck, and teaches people to refresh by hand.
+ */
+const PROVISION_DELAYS = [1200, 1800, 2500, 3500, 5000, 7000, 10000];
+const PROVISION_MAX_ATTEMPTS = 24;
+
 /** Poll while a freshly created board is being provisioned server-side. */
 function watchProvisioning(attempt = 0) {
   if (state.provisionTimer) clearTimeout(state.provisionTimer);
-  if (attempt > 12) return; // give up after ~2 minutes; the cron will catch it
+
+  if (attempt >= PROVISION_MAX_ATTEMPTS) {
+    // Never leave the spinner turning. Giving up silently is what made a slow
+    // board indistinguishable from a broken one.
+    renderProvisionGaveUp();
+    return;
+  }
+
+  const delay = PROVISION_DELAYS[Math.min(attempt, PROVISION_DELAYS.length - 1)];
   state.provisionTimer = setTimeout(async () => {
     try {
       const before = state.jobs.length;
       await loadJobs();
       await loadBoards();
-      if (state.jobs.length === before) watchProvisioning(attempt + 1);
-      else toast(`${state.jobs.length} jobs found`);
+
+      if (state.jobs.length > before) {
+        toast(`${state.jobs.length} jobs found`);
+        return;
+      }
+
+      // A board can finish provisioning with nothing to show - the criteria may
+      // genuinely match nothing today. Stop as soon as the server reports the
+      // refresh has run, rather than spinning out the whole window on a board
+      // that has already given its answer.
+      const board = state.boards.find((b) => b.id === state.boardId);
+      if (board && board.lastRefresh) {
+        render();
+        return;
+      }
+
+      watchProvisioning(attempt + 1);
     } catch {
       watchProvisioning(attempt + 1);
     }
-  }, 10000);
+  }, delay);
+}
+
+function renderProvisionGaveUp() {
+  const empty = $('#empty');
+  if (!empty) return;
+  clear(empty).append(
+    h('h3', { text: 'This is taking longer than usual' }),
+    h('p', {
+      text: 'The board is still being set up in the background and will fill in on its own. Checking now is safe.',
+    }),
+    h('button', {
+      class: 'btn btn--primary',
+      text: 'Check now',
+      onclick: async (event) => {
+        await busy(event.target, 'Checking…', async () => {
+          await loadJobs();
+          await loadBoards();
+          render();
+        })(event);
+      },
+    })
+  );
 }
 
 async function runCuration() {
