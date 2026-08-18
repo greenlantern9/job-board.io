@@ -91,17 +91,35 @@ export function decodeEntities(text) {
   });
 }
 
-/** HTML to readable plain text. Block-level tags become newlines so bullet
- *  lists survive as something a scorer and a human can both read. */
+/** One pass of tag removal: scripts and styles discarded entirely, block-level
+ *  tags turned into newlines so bullet lists survive as readable text. */
+function stripTags(text) {
+  return text
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<\/(p|div|li|tr|h[1-6]|section)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<[^>]+>/g, '');
+}
+
+/**
+ * HTML to readable plain text.
+ *
+ * Stripping and decoding run twice, and the order is the whole point. Doing it
+ * once - strip, then decode - leaves double-encoded markup intact: a feed
+ * sending `&lt;div class="x"&gt;` has no literal tags to remove, so the strip
+ * finds nothing and the decode then turns it into a visible `<div class="x">`
+ * in the middle of the description. Plenty of feeds encode that way, and users
+ * saw raw markup in job descriptions as a result.
+ *
+ * A second pass removes what the first decode revealed. Two passes rather than
+ * a loop: that is enough for every real feed, and it cannot be made to spin by
+ * a hostile payload of deeply nested encodings.
+ */
 export function htmlToText(html) {
-  return decodeEntities(
-    String(html || '')
-      .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
-      .replace(/<\/(p|div|li|tr|h[1-6]|section)>/gi, '\n')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<li[^>]*>/gi, '- ')
-      .replace(/<[^>]+>/g, '')
-  )
+  let text = stripTags(String(html || ''));
+  text = stripTags(decodeEntities(text));
+  return decodeEntities(text)
     .replace(/\r/g, '')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')

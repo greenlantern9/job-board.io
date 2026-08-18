@@ -453,20 +453,30 @@ const DISCIPLINES = [
     'software',
     /\b(software|engineer|engineering|developer|programmer|devops|sre|backend|back-end|frontend|front-end|fullstack|full-stack|architect|data scientist|machine learning|platform|infrastructure|qa automation)\b/i,
   ],
-  [
-    'creative',
-    // Bare "photo" and "video" belong here. Requiring "photograph" meant the
-    // most natural phrasing of the search — "photo and video gigs" — classified
-    // as nothing at all, so the field check silently never ran. Software is
-    // tested first, so "Software Engineer - Video" still lands as software.
-    /\b(photo\w*|video\w*|cinematograph\w*|filmmak\w*|content creator|storytell\w*|retouch\w*|colou?rist|illustrator|animator|art director|graphic design\w*|visual design\w*|brand design\w*|creative director|producer|editorial)\b/i,
-  ],
   ['sales', /\b(sales|account executive|business development|quota|revenue|sdr|bdr)\b/i],
   ['support', /\b(customer (service|support|success)|client (success|services)|helpdesk|help desk|technical support)\b/i],
   ['finance', /\b(accountant|accounting|controller|auditor|bookkeep\w*|payroll|treasury|financial analyst)\b/i],
-  ['healthcare', /\b(nurse|nursing|physician|clinician|therapist|caregiver|medical assistant|pharmac\w*)\b/i],
+  [
+    'healthcare',
+    /\b(nurse|nursing|physician|clinician|therapist|caregiver|medical assistant|pharmac\w*|mental health|psycholog\w*|counsell?or|health professional|dentist|paramedic)\b/i,
+  ],
   ['trades', /\b(electrician|plumber|carpenter|welder|installer|hvac|mechanic|technician, field|field technician)\b/i],
   ['teaching', /\b(teacher|tutor|instructor|coach|lecturer|professor|curriculum)\b/i],
+  // Creative is tested last, after every role-defining noun.
+  //
+  // "Video" in a title is usually the domain rather than the job: "Customer
+  // Success Manager, Video Games" is a support role at a games company, and
+  // "Mental Health Professional (Chat & Video)" is a clinician. Matching
+  // creative first read both as creative work and let them onto a photography
+  // board; testing the role nouns first reads the title the way a person does.
+  //
+  // Bare "photo" and "video" belong here even so. Requiring "photograph" meant
+  // the most natural phrasing of the search - "photo and video gigs" -
+  // classified as nothing at all, and the field check silently never ran.
+  [
+    'creative',
+    /\b(photo\w*|video\w*|cinematograph\w*|filmmak\w*|content creator|storytell\w*|retouch\w*|colou?rist|illustrator|animator|art director|graphic design\w*|visual design\w*|brand design\w*|creative director|producer|editorial)\b/i,
+  ],
 ];
 
 /** The field a piece of text belongs to, or null when it is not clear. */

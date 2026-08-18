@@ -60,6 +60,15 @@ test('scripts and styles are dropped, not rendered as text', () => {
   assert.ok(text.includes('Real'));
 });
 
+test('double-encoded markup does not survive as visible text', () => {
+  // A feed sending &lt;div&gt; has no literal tags to strip, so a single
+  // strip-then-decode pass turned it back into markup the user could see in the
+  // job description. Two passes are required, and this pins that.
+  assert.equal(htmlToText('&lt;div class="x"&gt;Real text&lt;/div&gt;'), 'Real text');
+  assert.equal(htmlToText('&lt;style&gt;.a{color:red}&lt;/style&gt;Real text'), 'Real text');
+  assert.equal(htmlToText('Before &lt;script&gt;alert(1)&lt;/script&gt; after'), 'Before after');
+});
+
 test('entities decode, including numeric and hex forms', () => {
   assert.equal(decodeEntities('Ben &amp; Jerry&#39;s'), "Ben & Jerry's");
   assert.equal(decodeEntities('caf&#233;'), 'café');

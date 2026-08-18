@@ -55,6 +55,17 @@ export const ADD_BATCH_SIZE = 10;
 export const MAX_ACTIVE_JOBS = 50;
 
 /**
+ * How relevant a posting must be to earn a place on the board.
+ *
+ * Deliberately just above the ceiling applied to out-of-field postings, so a
+ * job from the wrong discipline cannot be admitted no matter how well it scores
+ * on recency or salary. A board that stays empty because nothing good was found
+ * is more useful than one padded with near-misses the reader has to filter
+ * themselves.
+ */
+export const ADMIT_SCORE_FLOOR = 60;
+
+/**
  * Statuses that do not consume a slot.
  *
  * Rejecting or archiving is the user saying "not this one", and that decision
@@ -260,20 +271,33 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
       `This board is holding its maximum of ${MAX_ACTIVE_JOBS} jobs. Reject or archive some to make room.`
     );
     toInsert.length = 0;
-  } else if (toInsert.length > slots) {
+  } else if (toInsert.length > 0) {
+    // Relevance decides admission, not just ordering.
+    //
+    // Passing the filters used to be enough to get onto the board, so weak
+    // matches were added and then shown with a low score - leaving the reader
+    // to do the sorting the board exists to do. Ranking every candidate first
+    // and refusing the ones below the bar means a board holds jobs worth
+    // looking at, and an empty board honestly reports that nothing good was
+    // found rather than padding itself.
+    //
+    // The bar sits just above the out-of-field ceiling, so a posting from the
+    // wrong discipline can never be admitted however well it scores otherwise.
     const ranked = toInsert
       .map((entry) => ({
         entry,
         score: heuristicScore(entry.job, { prompt: board.prompt, filters: activeFilters }).score,
       }))
-      .sort((a, b) => b.score - a.score)
-      .map(({ entry }) => entry);
+      .sort((a, b) => b.score - a.score);
 
-    summary.passedOver = toInsert.length - slots;
+    const relevant = ranked.filter(({ score }) => score >= ADMIT_SCORE_FLOOR);
+    summary.belowBar = ranked.length - relevant.length;
+    summary.passedOver = Math.max(0, relevant.length - slots);
+
     toInsert.length = 0;
     // Overshoot deliberately: link checking drops some, and trimming to exactly
     // `slots` afterwards means a dead posting does not silently cost a slot.
-    toInsert.push(...ranked.slice(0, slots + LINK_CHECK_OVERSHOOT));
+    toInsert.push(...relevant.slice(0, slots + LINK_CHECK_OVERSHOOT).map(({ entry }) => entry));
   }
 
   if (toInsert.length > 0) {
@@ -377,15 +401,31 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
 
   Object.assign(summary, await reapClosedJobs(env, board, { reapable, seen, now }));
 
-  // Only pay to score when this run actually brought something back.
+  // Spend when there is something worth ranking - not merely when something
+  // arrived.
   //
-  // scoreUnscored picks up every unscored job on the board, not just the ones
-  // just added - so without this gate a refresh that matched nothing still
-  // spent model calls on leftovers from an earlier run that hit a ceiling. The
-  // user saw no new jobs and was charged anyway, which is the worst possible
-  // combination. Leftovers are picked up by the next productive refresh, or
-  // immediately via Rescore, which is an explicit, user-initiated spend.
-  if (summary.added > 0) {
+  // The rule started as "only if this run added jobs", after a refresh that
+  // matched nothing was billed for ranking leftovers and showed the user
+  // nothing for it. But that also blocked the case where a key has since become
+  // reachable and the board is still carrying heuristic scores from when it was
+  // not: the board would stay permanently worse with no way back except a
+  // manual rescore.
+  //
+  // So: rank when new jobs arrived, or when there is anything left that the
+  // model has never seen. Both change what the user is looking at, which is the
+  // test that matters. A run that changes nothing still spends nothing, and any
+  // spend is reported in the summary rather than discovered on a bill.
+  const pending = await queryOne(
+    env,
+    env.ANTHROPIC_API_KEY
+      ? `SELECT COUNT(*) AS n FROM jobs WHERE board_id = ? AND status <> 'archived'
+           AND (scored_at = '' OR scored_by = 'heuristic')`
+      : `SELECT COUNT(*) AS n FROM jobs WHERE board_id = ? AND scored_at = ''`,
+    board.id
+  );
+  const worthRanking = (pending && pending.n) || 0;
+
+  if (summary.added > 0 || worthRanking > 0) {
     const scoring = await scoreUnscored(env, board);
     summary.warnings.push(...scoring.warnings);
     summary.scored = scoring.scored;
@@ -393,16 +433,6 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
   } else {
     summary.scored = 0;
     summary.modelCalls = 0;
-    const pending = await queryOne(
-      env,
-      `SELECT COUNT(*) AS n FROM jobs WHERE board_id = ? AND scored_at = ''`,
-      board.id
-    );
-    if (pending && pending.n > 0) {
-      summary.warnings.push(
-        `${pending.n} jobs are still unranked. Nothing new arrived, so no AI spend was made - use Rescore to rank them now.`
-      );
-    }
   }
 
   await run(
@@ -495,11 +525,26 @@ async function reapClosedJobs(env, board, { reapable, seen, now }) {
  * separately, inside scoreJobs, which only sends its first few batches.
  */
 export async function scoreUnscored(env, board, { limit = 500, force = false } = {}) {
+  // Jobs ranked while no API key was reachable keep a heuristic score forever,
+  // because nothing re-scores a job that already has one. That is how a board
+  // built during an outage stays permanently worse than the one built after it
+  // - the fix arrived and the existing rows never felt it.
+  //
+  // So when a key is present, previously heuristic-scored jobs are eligible
+  // again, after the never-scored ones. Ordering matters: new arrivals are
+  // ranked first, and the upgrade uses whatever batch and budget capacity is
+  // left over rather than competing for it.
+  const upgradeStale = Boolean(env.ANTHROPIC_API_KEY) && !force;
+
   const rows = await queryAll(
     env,
     force
       ? `SELECT * FROM jobs WHERE board_id = ? AND status <> 'archived' ORDER BY discovered_at DESC LIMIT ?`
-      : `SELECT * FROM jobs WHERE board_id = ? AND scored_at = '' ORDER BY discovered_at DESC LIMIT ?`,
+      : upgradeStale
+        ? `SELECT * FROM jobs WHERE board_id = ? AND status <> 'archived'
+             AND (scored_at = '' OR scored_by = 'heuristic')
+           ORDER BY (scored_at <> '') ASC, score DESC, discovered_at DESC LIMIT ?`
+        : `SELECT * FROM jobs WHERE board_id = ? AND scored_at = '' ORDER BY discovered_at DESC LIMIT ?`,
     board.id,
     limit
   );
