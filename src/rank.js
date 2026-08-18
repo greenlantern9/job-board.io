@@ -1,3 +1,5 @@
+import { expandPhrase } from './synonyms.js';
+
 // The deterministic ranking heuristic.
 //
 // Kept separate from scoring.js so it carries no dependencies: it is the
@@ -104,7 +106,11 @@ const ROLE_NOUNS =
   'roles|role|positions|position|jobs|job|work|gig|gigs';
 
 const ROLE_RE = new RegExp(String.raw`\b((?:[a-z][a-z+#.\-]*\s+){0,3}(?:${ROLE_NOUNS}))\b`, 'gi');
-const PHRASE_TAIL = /\b(roles?|positions?|jobs?)$/;
+// Words naming the container rather than the work: gigs, work, opportunities.
+// Left in, they become required words - "photo and video gigs" demanded the
+// literal word "gigs" in a title and matched nothing at all, which is the most
+// natural way anyone would phrase that search.
+const PHRASE_TAIL = /\b(roles?|positions?|jobs?|gigs?|work|opportunit(?:y|ies)|openings?|listings?)$/;
 const PHRASE_HEAD =
   /^(a|an|the|any|some|more|new|other|at|in|for|of|and|or|to|my|i|im|want|wants|looking|seeking|find|me|least|base|about)\s+/;
 
@@ -152,6 +158,22 @@ const CRITERIA_STOPWORDS = new Set([
 
 /** True for tokens that are money or numbers rather than criteria. */
 const IS_NUMERIC = /^\d+(\.\d+)?k?$/;
+
+/**
+ * Does this phrase describe that text, allowing for how employers actually
+ * word things?
+ *
+ * Every slot must be filled, but any member of a slot's family fills it - so
+ * "photo and video" is satisfied by "Video Editor" or "Content Creator". The
+ * ranking used to compare words literally while only the source filter knew
+ * about synonyms, which is why a board could let a job through and then rank it
+ * as though it barely matched.
+ */
+function phraseMatches(phrase, text) {
+  const slots = expandPhrase(phrase);
+  if (slots.length === 0) return false;
+  return slots.every((family) => family.some((alternative) => text.includes(alternative)));
+}
 
 export function criteriaTerms(prompt) {
   const phrases = extractRolePhrases(prompt);
@@ -204,11 +226,8 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
   const { phrases, words: criteriaWords } = criteriaTerms(prompt);
 
   if (phrases.length > 0) {
-    const best = phrases.find((phrase) => {
-      const parts = phrase.split(' ');
-      return parts.every((w) => titleText.includes(w));
-    });
-    const inBody = phrases.find((phrase) => phrase.split(' ').every((w) => haystack.includes(w)));
+    const best = phrases.find((phrase) => phraseMatches(phrase, titleText));
+    const inBody = phrases.find((phrase) => phraseMatches(phrase, haystack));
 
     if (best) {
       score += 40;
@@ -384,8 +403,30 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
     }
   }
 
+  // A posting from a different field than the one asked for is pushed well
+  // down. Without this a search for video work led with software engineering
+  // roles that merely mentioned media, which is the single loudest way the
+  // board looked broken.
+  const clash = disciplineClash(job.title, prompt);
+  if (clash < 0) {
+    score -= clash;
+    reasons.push('same field of work');
+  }
+
+  const raw = Math.max(0, Math.min(100, Math.round(score)));
+
+  // A posting from a different field is capped, not merely penalised.
+  //
+  // Subtracting from a score that has already reached the ceiling changes
+  // nothing, and that is exactly what happened: software roles whose titles
+  // merely contained "video" sat at 100 alongside actual video editors, because
+  // the title matched the phrase and every deduction was absorbed by the clamp.
+  // A ceiling guarantees the ordering instead of hoping the arithmetic lands.
+  const capped = clash > 0 ? Math.min(raw, 55) : raw;
+  if (clash > 0) reasons.push('different field to what you asked for');
+
   return {
-    score: Math.max(0, Math.min(100, Math.round(score))),
+    score: capped,
     reason: reasons.length ? reasons.slice(0, 3).join('; ') : 'baseline relevance',
     scoredBy: 'heuristic',
     // What the job asks for that this candidate does not obviously have.
@@ -393,4 +434,65 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
     // was checked.
     gaps,
   };
+}
+
+/**
+ * What field of work a title belongs to.
+ *
+ * Ordered, and the first match wins, because titles routinely carry words from
+ * two fields: "Senior Engineering Manager, Media Foundation" is a software job
+ * that happens to mention media, and a search for video work should not be
+ * shown it. Testing software before creative settles that the right way round.
+ *
+ * Only confident classifications are useful here - an unrecognised title
+ * returns null and is left entirely to the ordinary scoring, because guessing a
+ * discipline and penalising on the guess is worse than not classifying at all.
+ */
+const DISCIPLINES = [
+  [
+    'software',
+    /\b(software|engineer|engineering|developer|programmer|devops|sre|backend|back-end|frontend|front-end|fullstack|full-stack|architect|data scientist|machine learning|platform|infrastructure|qa automation)\b/i,
+  ],
+  [
+    'creative',
+    // Bare "photo" and "video" belong here. Requiring "photograph" meant the
+    // most natural phrasing of the search — "photo and video gigs" — classified
+    // as nothing at all, so the field check silently never ran. Software is
+    // tested first, so "Software Engineer - Video" still lands as software.
+    /\b(photo\w*|video\w*|cinematograph\w*|filmmak\w*|content creator|storytell\w*|retouch\w*|colou?rist|illustrator|animator|art director|graphic design\w*|visual design\w*|brand design\w*|creative director|producer|editorial)\b/i,
+  ],
+  ['sales', /\b(sales|account executive|business development|quota|revenue|sdr|bdr)\b/i],
+  ['support', /\b(customer (service|support|success)|client (success|services)|helpdesk|help desk|technical support)\b/i],
+  ['finance', /\b(accountant|accounting|controller|auditor|bookkeep\w*|payroll|treasury|financial analyst)\b/i],
+  ['healthcare', /\b(nurse|nursing|physician|clinician|therapist|caregiver|medical assistant|pharmac\w*)\b/i],
+  ['trades', /\b(electrician|plumber|carpenter|welder|installer|hvac|mechanic|technician, field|field technician)\b/i],
+  ['teaching', /\b(teacher|tutor|instructor|coach|lecturer|professor|curriculum)\b/i],
+];
+
+/** The field a piece of text belongs to, or null when it is not clear. */
+export function detectDiscipline(text) {
+  const value = String(text || '');
+  for (const [name, re] of DISCIPLINES) {
+    if (re.test(value)) return name;
+  }
+  return null;
+}
+
+/**
+ * How badly a posting's field clashes with what was asked for.
+ *
+ * Returns a penalty, not a rejection. Fields genuinely overlap at the edges - a
+ * video engineer sits between software and creative - so a hard filter would
+ * throw away real matches. A large deduction pushes the clash off the first
+ * screen while leaving it findable, which is the behaviour that survives being
+ * wrong.
+ */
+export function disciplineClash(jobTitle, prompt) {
+  const wanted = detectDiscipline(prompt);
+  const got = detectDiscipline(jobTitle);
+  if (!wanted || !got) return 0;
+  // Same field is a strong positive: it is the single most reliable signal
+  // that a posting is the kind of work someone asked for.
+  if (wanted === got) return -12;
+  return 35;
 }

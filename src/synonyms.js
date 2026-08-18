@@ -64,6 +64,11 @@ const FAMILIES = [
   ['part time', 'part-time', 'casual', 'seasonal'],
 ];
 
+/** Joining words that carry no requirement of their own. */
+const CONNECTIVES = new Set([
+  'and', 'or', 'the', 'a', 'an', 'of', 'for', 'with', 'in', 'on', 'at', 'to', '&', '/', '+',
+]);
+
 /** term -> the set of terms that mean the same thing (including itself). */
 const INDEX = new Map();
 for (const family of FAMILIES) {
@@ -109,7 +114,15 @@ export function expandPhrase(phrase) {
   const whole = INDEX.get(clean);
   if (whole) return [[...whole]];
 
-  return clean.split(' ').filter(Boolean).map((word) => expandTerm(word));
+  return clean
+    .split(' ')
+    .filter(Boolean)
+    // Connectives are not requirements. "photo and video" was compiling to
+    // three slots - photo, the literal word "and", and video - so a posting had
+    // to contain the word "and" in its title to match. One result came back for
+    // the most natural phrasing of the search.
+    .filter((word) => !CONNECTIVES.has(word))
+    .map((word) => expandTerm(word));
 }
 
 /** True when a term family is known - used only for reporting. */

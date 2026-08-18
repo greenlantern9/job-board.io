@@ -23,6 +23,7 @@ export const SOURCE_KINDS = [
   'remoteok',
   'himalayas',
   'themuse',
+  'weworkremotely',
   'jobicy',
   'adzuna',
   'rss',
@@ -810,7 +811,7 @@ async function fetchSmartRecruiters(slug) {
 }
 
 /** Kinds whose identifier is a search query, not a company. */
-export const AGGREGATOR_KINDS = ['adzuna', 'themuse', 'jobicy', 'remotive', 'arbeitnow', 'remoteok', 'himalayas'];
+export const AGGREGATOR_KINDS = ['adzuna', 'themuse', 'weworkremotely', 'jobicy', 'remotive', 'arbeitnow', 'remoteok', 'himalayas'];
 
 /** Exposed so the matching rules can be tested without hitting a live feed. */
 export function _compileQuery(identifier) {
@@ -820,6 +821,81 @@ export function _compileQuery(identifier) {
 // Declared before matchesFilters uses it; function declarations hoist, but the
 // dependency is worth stating since the two live far apart in this file.
 export { compileTerms as _compileTerms };
+
+/**
+ * We Work Remotely, by category feed.
+ *
+ * Its category RSS actually narrows - the design feed returns eighty real
+ * design jobs - which puts it in a small minority. Remotive and Himalayas were
+ * measured returning byte-identical results for design, marketing and writing,
+ * so their category parameters do nothing and their output is noise on any
+ * non-technical board.
+ */
+async function fetchWeWorkRemotely(query) {
+  const text = String(query || '').toLowerCase();
+  const CATEGORIES = [
+    [/photograph|video|film|creative|storytell|content creator|design|brand|art direct/, 'remote-design-jobs'],
+    [/support|customer service|client success|helpdesk|troubleshoot/, 'remote-customer-support-jobs'],
+    [/market|growth|seo|social media|copywrit/, 'remote-marketing-jobs'],
+    [/sales|account executive|business development/, 'remote-sales-jobs'],
+    [/product manager|product management|roadmap/, 'remote-product-jobs'],
+    [/engineer|developer|programming|backend|frontend|software/, 'remote-programming-jobs'],
+  ];
+  const category = (CATEGORIES.find(([re]) => re.test(text)) || [])[1];
+  // Without a category this would be the whole board, which is exactly the
+  // undifferentiated firehose the other aggregators already provide.
+  if (!category) return [];
+
+  const matchers = compileTerms(queryTerms(query));
+  const res = await fetchWithTimeout(`https://weworkremotely.com/categories/${category}.rss`, {
+    headers: { Accept: 'application/rss+xml, application/xml, text/xml' },
+  });
+  if (!res.ok) throw new SourceError(`${res.status} ${res.statusText}`);
+  const xml = await res.text();
+
+  const entries = xml.match(/<item\b[\s\S]*?<\/item>/gi) || [];
+  const pick = (block, tag) => {
+    const match = block.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+    if (!match) return '';
+    return decodeEntities(match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')).trim();
+  };
+
+  const out = [];
+  for (const block of entries) {
+    // Titles arrive as "Company: Role", so splitting gives a real employer name
+    // instead of attributing every row to the aggregator.
+    const raw = htmlToText(pick(block, 'title'));
+    const split = raw.indexOf(':');
+    const company = split > 0 ? raw.slice(0, split).trim() : '';
+    const title = (split > 0 ? raw.slice(split + 1) : raw).trim();
+    if (!title) continue;
+
+    const description = htmlToText(pick(block, 'description'));
+    const link = pick(block, 'link');
+
+    // The category already narrowed, so a single matching word is enough.
+    if (!matchesAnyWord(`${title} ${description.slice(0, 400)}`, matchers)) continue;
+
+    const salary = parseSalary(`${title} ${description}`);
+    out.push({
+      direct: false,
+      externalId: `wwr:${(pick(block, 'guid') || link).slice(0, 180)}`,
+      title: title.slice(0, 200),
+      company,
+      location: 'Remote',
+      remote: true,
+      employment: '',
+      salaryMin: salary.min,
+      salaryMax: salary.max,
+      salaryRaw: salary.raw,
+      url: link,
+      description: truncate(description),
+      postedAt: isoOrEmpty(pick(block, 'pubDate')),
+    });
+    if (out.length >= MAX_PER_AGGREGATOR) break;
+  }
+  return out;
+}
 
 /**
  * Jobicy. No key, and its tag filter genuinely narrows - unlike most of the
@@ -963,6 +1039,8 @@ export async function fetchSource(source, options = {}) {
       return fetchHimalayas(source.identifier);
     case 'themuse':
       return fetchTheMuse(source.identifier);
+    case 'weworkremotely':
+      return fetchWeWorkRemotely(source.identifier);
     case 'jobicy':
       return fetchJobicy(source.identifier);
     case 'adzuna':
