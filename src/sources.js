@@ -663,16 +663,23 @@ async function fetchHimalayas(query) {
  * the difference between this source being useful and being noise.
  */
 const MUSE_CATEGORIES = [
-  [/\b(software|backend|back-end|frontend|front-end|fullstack|full-stack|developer|engineer|golang|rust|python|java|typescript|node)\b/, 'Software Engineering'],
-  [/\b(program|project|delivery|tpm|pmo|scrum)\b/, 'Project Management'],
-  [/\b(product)\b/, 'Product Management'],
-  [/\b(data|analytics|analyst|machine learning|ml|scientist)\b/, 'Data Science'],
-  [/\b(devops|sre|infrastructure|platform|cloud|security|network|systems)\b/, 'IT'],
-  [/\b(design|designer|ux|ui)\b/, 'Design'],
-  [/\b(sales|account executive|business development)\b/, 'Sales'],
-  [/\b(marketing|growth|seo|content)\b/, 'Marketing'],
-  [/\b(operations|ops|supply)\b/, 'Business Operations'],
-  [/\b(finance|accounting|controller)\b/, 'Accounting'],
+  [/(software|backend|back-end|frontend|front-end|fullstack|full-stack|developer|engineer|golang|rust|python|java|typescript|node)/, 'Software Engineering'],
+  [/(program|project|delivery|tpm|pmo|scrum)/, 'Project Management'],
+  [/(product)/, 'Product Management'],
+  [/(data|analytics|analyst|machine learning|ml|scientist)/, 'Data Science'],
+  [/(devops|sre|infrastructure|platform|cloud|security|network|systems)/, 'IT'],
+  [/(design|designer|ux|ui)/, 'Design'],
+  [/(sales|account executive|business development)/, 'Sales'],
+  [/(marketing|growth|seo|content)/, 'Marketing'],
+  [/(operations|ops|supply)/, 'Business Operations'],
+  [/(finance|accounting|controller)/, 'Accounting'],
+  // Verified against the live API as returning results. The creative
+  // categories a photographer or videographer would want - Creative & Design,
+  // Editorial, Media - all return zero, so there is nothing to map them to
+  // here and they fall through to keyword matching instead.
+  [/(customer service|support|troubleshoot|troubleshooting|helpdesk|help desk|client success)/, 'Customer Service'],
+  [/(retail|store|shop|merchandis)/, 'Retail'],
+  [/(teacher|tutor|instructor|coach|education|training|curriculum)/, 'Education'],
 ];
 
 const MUSE_LEVELS = [

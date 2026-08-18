@@ -81,11 +81,27 @@ export function jobAgeDays(job) {
 // against exactly the terms it searched for.
 
 const ROLE_NOUNS =
+  // Corporate and salaried.
   'engineer|manager|developer|designer|analyst|scientist|architect|director|lead|specialist|' +
   'consultant|administrator|technician|recruiter|marketer|writer|producer|strategist|coordinator|' +
-  'associate|executive|officer|partner|accountant|nurse|physician|therapist|teacher|professor|' +
-  'operator|planner|buyer|controller|auditor|advisor|agent|representative|supervisor|superintendent|' +
-  'roles|role|positions|position|jobs|job';
+  'associate|executive|officer|partner|accountant|auditor|advisor|adviser|agent|representative|' +
+  'supervisor|superintendent|planner|buyer|controller|' +
+  // Service-desk roles end in a noun that is generic on its own but specific
+  // with its modifiers: solar customer service, client support.
+  'service|support|success|rep|reps|' +
+  // Creative and media. Without these a videographer or photo-editor role
+  // could not be parsed at all, which is most of the freelance market.
+  'photographer|videographer|cinematographer|filmmaker|editor|storyteller|creator|artist|' +
+  'illustrator|animator|retoucher|copywriter|journalist|blogger|podcaster|host|presenter|' +
+  'stylist|gaffer|' +
+  // Teaching, coaching and guiding - hourly and seasonal work that no ATS
+  // ever sees but that people genuinely search for.
+  'coach|instructor|trainer|teacher|professor|tutor|guide|mentor|facilitator|' +
+  // Care, hospitality and trades.
+  'nurse|physician|therapist|caregiver|assistant|chef|cook|bartender|server|barista|driver|' +
+  'operator|installer|electrician|plumber|carpenter|mechanic|welder|surveyor|inspector|' +
+  // The generic tails, kept last so a longer phrase wins first.
+  'roles|role|positions|position|jobs|job|work|gig|gigs';
 
 const ROLE_RE = new RegExp(String.raw`\b((?:[a-z][a-z+#.\-]*\s+){0,3}(?:${ROLE_NOUNS}))\b`, 'gi');
 const PHRASE_TAIL = /\b(roles?|positions?|jobs?)$/;

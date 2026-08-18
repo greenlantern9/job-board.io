@@ -41,6 +41,20 @@ export function extractSkillsHeuristically(text) {
     'salesforce', 'hubspot', 'sap', 'oracle', 'servicenow', 'workday', 'pytorch', 'tensorflow',
     'llm', 'nlp', 'machine learning', 'data science', 'product management', 'program management',
     'roadmap', 'stakeholder', 'go-to-market', 'p&l', 'forecasting', 'compliance', 'soc 2', 'gdpr',
+    // Creative and production. A photographer's profile was previously
+    // unreadable - none of their actual skills were in the vocabulary.
+    'photography', 'videography', 'cinematography', 'photoshop', 'lightroom', 'premiere pro',
+    'premiere', 'after effects', 'final cut', 'davinci resolve', 'davinci', 'capture one',
+    'colour grading', 'color grading', 'colour correction', 'color correction', 'sound design',
+    'audio editing', 'motion graphics', 'storyboarding', 'drone', 'fpv', 'gimbal', 'lighting',
+    'studio lighting', 'retouching', 'social media', 'reels', 'shortform', 'short-form',
+    'copywriting', 'editing', 'video editing', 'photo editing', 'branding', 'art direction',
+    // Service, coaching and trades.
+    'customer service', 'troubleshooting', 'technical support', 'crm', 'zendesk', 'salesforce',
+    'coaching', 'instruction', 'lesson planning', 'first aid', 'cpr', 'lifeguard',
+    'surfing', 'skateboarding', 'yoga', 'pilates', 'personal training',
+    'solar', 'photovoltaic', 'pv', 'inverter', 'electrical', 'installation', 'maintenance',
+    'event planning', 'weddings', 'client management', 'scheduling', 'invoicing',
   ];
 
   const found = known.filter((skill) => {
