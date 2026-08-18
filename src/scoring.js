@@ -7,6 +7,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { heuristicScore } from './rank.js';
+import { reserveCall, budgetStatus, MODEL_SCORE_FLOOR } from './budget.js';
 
 const BATCH_SIZE = 15;
 const MAX_BATCHES_PER_RUN = 4; // bounds cost and CPU time for one cron tick
@@ -211,13 +212,32 @@ export async function scoreJobs(env, jobs, board, { profile = null } = {}) {
   // Order by heuristic score so that if we hit the batch ceiling, the model's
   // attention went to the jobs most likely to matter.
   const ordered = [...jobs].sort((a, b) => results.get(b.id).score - results.get(a.id).score);
+
+  // Do not pay to confirm what the heuristic already knows. Most of a large
+  // ingestion is plainly irrelevant, and those jobs were never going to be read
+  // - so the floor costs nothing in quality and removes the easiest waste.
+  const worthAsking = ordered.filter((job) => results.get(job.id).score >= MODEL_SCORE_FLOOR);
+  const skippedAsCheap = ordered.length - worthAsking.length;
+  if (skippedAsCheap > 0) {
+    warnings.push(`${skippedAsCheap} clearly-unrelated jobs were ranked without the model.`);
+  }
+
   const batches = [];
-  for (let i = 0; i < ordered.length && batches.length < MAX_BATCHES_PER_RUN; i += BATCH_SIZE) {
-    batches.push(ordered.slice(i, i + BATCH_SIZE));
+  for (let i = 0; i < worthAsking.length && batches.length < MAX_BATCHES_PER_RUN; i += BATCH_SIZE) {
+    batches.push(worthAsking.slice(i, i + BATCH_SIZE));
   }
 
   let usedModel = false;
   for (const batch of batches) {
+    // Reserved before the call, so a crash mid-request costs the allowance
+    // rather than escaping it. Undercounting is the failure that spends money.
+    if (!(await reserveCall(env, board.user_id, batch.length))) {
+      const status = await budgetStatus(env, board.user_id);
+      warnings.push(
+        `Daily AI budget reached (${status.limit} calls). The rest were ranked with the built-in scorer; it resets tomorrow.`
+      );
+      break;
+    }
     try {
       const scored = await scoreBatchWithClaude(client, model, batch, context);
       for (const [id, value] of scored) {
@@ -233,8 +253,8 @@ export async function scoreJobs(env, jobs, board, { profile = null } = {}) {
   }
 
   const covered = batches.length * BATCH_SIZE;
-  if (ordered.length > covered) {
-    warnings.push(`${ordered.length - covered} lower-ranked jobs used the built-in ranking this run.`);
+  if (worthAsking.length > covered) {
+    warnings.push(`${worthAsking.length - covered} lower-ranked jobs used the built-in ranking this run.`);
   }
 
   return { results, warnings, usedModel };

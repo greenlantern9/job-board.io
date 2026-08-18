@@ -22,6 +22,8 @@ export const SOURCE_KINDS = [
   'remoteok',
   'himalayas',
   'themuse',
+  'jobicy',
+  'adzuna',
   'rss',
 ];
 
@@ -787,7 +789,7 @@ async function fetchSmartRecruiters(slug) {
 }
 
 /** Kinds whose identifier is a search query, not a company. */
-export const AGGREGATOR_KINDS = ['themuse', 'remotive', 'arbeitnow', 'remoteok', 'himalayas'];
+export const AGGREGATOR_KINDS = ['adzuna', 'themuse', 'jobicy', 'remotive', 'arbeitnow', 'remoteok', 'himalayas'];
 
 /** Exposed so the matching rules can be tested without hitting a live feed. */
 export function _compileQuery(identifier) {
@@ -797,6 +799,128 @@ export function _compileQuery(identifier) {
 // Declared before matchesFilters uses it; function declarations hoist, but the
 // dependency is worth stating since the two live far apart in this file.
 export { compileTerms as _compileTerms };
+
+/**
+ * Jobicy. No key, and its tag filter genuinely narrows - unlike most of the
+ * free feeds, which ignore every parameter you send them.
+ */
+async function fetchJobicy(query) {
+  const matchers = compileTerms(queryTerms(query));
+  const text = String(query || '').toLowerCase();
+
+  // Its tags are a small fixed vocabulary; mapping onto them narrows
+  // server-side, which is the difference between this source being useful and
+  // being another hundred rows of the same remote engineering jobs.
+  // Verified against the live API. Stems rather than whole words, because
+  // photo never matches "photographer" - which is exactly how the first
+  // attempt returned nothing for every creative search.
+  const TAGS = [
+    [/photograph|photo|camera/, 'photography'],
+    [/video|videograph|film|cinema|footage|editw*s+video/, 'video'],
+    [/creative|storytell|art direct/, 'creative'],
+    [/design|designer|ux|ui|brand/, 'design'],
+    [/support|customer service|client success|troubleshoot|helpdesk|help desk/, 'support'],
+    [/copywrit|writer|writing|editor|content/, 'copywriting'],
+    [/market|growth|seo|social media/, 'marketing'],
+    [/sales|account executive|business development/, 'sales'],
+    [/data|analytics|analyst/, 'data-science'],
+  ];
+  const tag = (TAGS.find(([re]) => re.test(text)) || [])[1];
+
+  const params = new URLSearchParams({ count: String(Math.min(50, MAX_PER_AGGREGATOR)) });
+  if (tag) params.set('tag', tag);
+
+  const data = await fetchJson(`https://jobicy.com/api/v2/remote-jobs?${params.toString()}`);
+  const jobs = Array.isArray(data && data.jobs) ? data.jobs : [];
+  const out = [];
+
+  for (const job of jobs) {
+    const description = htmlToText(job.jobExcerpt || job.jobDescription);
+    const title = job.jobTitle || '';
+    const body = `${job.companyName || ''} ${(job.jobIndustry || []).join(' ')} ${description}`;
+    // The tag already narrowed; require only a single word when it did.
+    const kept = tag ? matchesAnyWord(title, matchers) : matchesQuery(title, body, matchers);
+    if (!kept) continue;
+
+    const salary = parseSalary(`${job.annualSalaryMin || ''} ${job.annualSalaryMax || ''} ${description}`);
+    out.push({
+      direct: false,
+      externalId: `jobicy:${job.id}`,
+      title: String(title).trim(),
+      company: job.companyName || '',
+      location: (job.jobGeo || '').replace(/,s*$/, ''),
+      remote: true,
+      employment: (job.jobType || []).join(', '),
+      salaryMin: Number(job.annualSalaryMin) || salary.min,
+      salaryMax: Number(job.annualSalaryMax) || salary.max,
+      salaryRaw: salary.raw,
+      url: job.url || '',
+      description: truncate(description),
+      postedAt: isoOrEmpty(job.pubDate),
+    });
+    if (out.length >= MAX_PER_AGGREGATOR) break;
+  }
+  return out;
+}
+
+/**
+ * Adzuna. The only source here that searches a large general index rather than
+ * a remote-tech niche - hourly, local, contract and trade work included - and
+ * the only one where the keyword, salary and recency filters run against the
+ * whole corpus instead of a window we pulled.
+ *
+ * Needs a free app id and key. Without them the source reports that plainly
+ * rather than silently returning nothing.
+ */
+async function fetchAdzuna(query, env) {
+  const appId = env && env.ADZUNA_APP_ID;
+  const appKey = env && env.ADZUNA_APP_KEY;
+  if (!appId || !appKey) {
+    throw new SourceError('Adzuna needs ADZUNA_APP_ID and ADZUNA_APP_KEY set as Worker secrets.');
+  }
+
+  // The identifier carries "query @ country", so one connector serves any
+  // market Adzuna covers.
+  const [rawQuery, rawCountry] = String(query || '').split('@');
+  const country = (rawCountry || 'us').trim().toLowerCase().slice(0, 2);
+  const what = rawQuery.trim();
+
+  const params = new URLSearchParams({
+    app_id: appId,
+    app_key: appKey,
+    results_per_page: '50',
+    what: what,
+    max_days_old: '30',
+    sort_by: 'date',
+    'content-type': 'application/json',
+  });
+
+  const data = await fetchJson(
+    `https://api.adzuna.com/v1/api/jobs/${encodeURIComponent(country)}/search/1?${params.toString()}`
+  );
+  const jobs = Array.isArray(data && data.results) ? data.results : [];
+
+  return jobs.slice(0, MAX_PER_AGGREGATOR).map((job) => {
+    const description = htmlToText(job.description);
+    const location = (job.location && job.location.display_name) || '';
+    return {
+      direct: false,
+      externalId: `adzuna:${job.id}`,
+      title: String(job.title || 'Untitled role').replace(/<[^>]+>/g, '').trim(),
+      company: (job.company && job.company.display_name) || '',
+      location,
+      remote: looksRemote(location, job.title, description),
+      employment: [job.contract_time, job.contract_type].filter(Boolean).join(', '),
+      // Adzuna normalises salary itself, which most sources do not.
+      salaryMin: Math.round(Number(job.salary_min) || 0),
+      salaryMax: Math.round(Number(job.salary_max) || 0),
+      salaryRaw: '',
+      url: job.redirect_url || '',
+      description: truncate(description),
+      postedAt: isoOrEmpty(job.created),
+    };
+  });
+}
 
 export async function fetchSource(source, options = {}) {
   switch (source.kind) {
@@ -818,6 +942,10 @@ export async function fetchSource(source, options = {}) {
       return fetchHimalayas(source.identifier);
     case 'themuse':
       return fetchTheMuse(source.identifier);
+    case 'jobicy':
+      return fetchJobicy(source.identifier);
+    case 'adzuna':
+      return fetchAdzuna(source.identifier, options.env);
     case 'rss':
       return fetchRss(source.identifier, options);
     default:

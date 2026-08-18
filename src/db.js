@@ -140,6 +140,17 @@ const STATEMENTS = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedupe ON notifications(dedupe_key) WHERE dedupe_key <> ''`,
   `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC)`,
+  // Model calls per account per day. The ceiling is enforced rather than
+  // advised, because every other path degrades silently when the model is
+  // unavailable - so an overspend would have no symptom until the bill.
+  `CREATE TABLE IF NOT EXISTS model_usage (
+    user_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    calls INTEGER NOT NULL DEFAULT 0,
+    jobs_scored INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, day)
+  )`,
   // One row per status change, with a copy of the posting as it read at the
   // time. Postings get edited and delisted, so without this the record of what
   // you actually applied to disappears exactly when you need it - preparing for
