@@ -170,7 +170,7 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
   for (const source of sources) {
     let jobs;
     try {
-      jobs = await fetchSource(source, { selfHost });
+      jobs = await fetchSource(source, { selfHost, category: activeFilters.category });
       summary.sourcesRun++;
       if (ATS_KINDS.includes(source.kind)) reapable.push(source);
     } catch (err) {

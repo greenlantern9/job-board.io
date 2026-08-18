@@ -407,7 +407,7 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
   // down. Without this a search for video work led with software engineering
   // roles that merely mentioned media, which is the single loudest way the
   // board looked broken.
-  const clash = disciplineClash(job.title, prompt);
+  const clash = disciplineClash(job.title, prompt, filters.category);
   if (clash < 0) {
     score -= clash;
     reasons.push('same field of work');
@@ -497,8 +497,10 @@ export function detectDiscipline(text) {
  * screen while leaving it findable, which is the behaviour that survives being
  * wrong.
  */
-export function disciplineClash(jobTitle, prompt) {
-  const wanted = detectDiscipline(prompt);
+export function disciplineClash(jobTitle, prompt, category = '') {
+  // An explicit category beats inference every time: it is what the user
+  // confirmed, and it cannot disagree with the routing the sources were given.
+  const wanted = category && category !== 'other' ? category : detectDiscipline(prompt);
   const got = detectDiscipline(jobTitle);
   if (!wanted || !got) return 0;
   // Same field is a strong positive: it is the single most reliable signal

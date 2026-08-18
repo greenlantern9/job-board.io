@@ -7,6 +7,7 @@
 
 import { detectSeniorityLevel } from './rank.js';
 import { expandPhrase } from './synonyms.js';
+import { categoryFor } from './categories.js';
 
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_DESCRIPTION_CHARS = 4000;
@@ -849,7 +850,13 @@ export { compileTerms as _compileTerms };
  * so their category parameters do nothing and their output is noise on any
  * non-technical board.
  */
-async function fetchWeWorkRemotely(query) {
+async function fetchWeWorkRemotely(query, boardCategory = '') {
+  // The board's category when it has one - it is the value the user confirmed,
+  // and it cannot disagree with the field check the ranking applies. The regex
+  // below is the fallback for boards created before categories existed.
+  const chosen = categoryFor('wwr', boardCategory);
+  if (chosen) return fetchWwrFeed(chosen, query);
+
   const text = String(query || '').toLowerCase();
   const CATEGORIES = [
     [/photograph|video|film|creative|storytell|content creator|design|brand|art direct/, 'remote-design-jobs'],
@@ -863,7 +870,10 @@ async function fetchWeWorkRemotely(query) {
   // Without a category this would be the whole board, which is exactly the
   // undifferentiated firehose the other aggregators already provide.
   if (!category) return [];
+  return fetchWwrFeed(category, query);
+}
 
+async function fetchWwrFeed(category, query) {
   const matchers = compileTerms(queryTerms(query));
   const res = await fetchWithTimeout(`https://weworkremotely.com/categories/${category}.rss`, {
     headers: { Accept: 'application/rss+xml, application/xml, text/xml' },
@@ -919,7 +929,8 @@ async function fetchWeWorkRemotely(query) {
  * Jobicy. No key, and its tag filter genuinely narrows - unlike most of the
  * free feeds, which ignore every parameter you send them.
  */
-async function fetchJobicy(query) {
+async function fetchJobicy(query, boardCategory = '') {
+  const chosenTag = categoryFor('jobicy', boardCategory);
   const matchers = compileTerms(queryTerms(query));
   const text = String(query || '').toLowerCase();
 
@@ -940,7 +951,7 @@ async function fetchJobicy(query) {
     [/sales|account executive|business development/, 'sales'],
     [/data|analytics|analyst/, 'data-science'],
   ];
-  const tag = (TAGS.find(([re]) => re.test(text)) || [])[1];
+  const tag = chosenTag || (TAGS.find(([re]) => re.test(text)) || [])[1];
 
   const params = new URLSearchParams({ count: String(Math.min(50, MAX_PER_AGGREGATOR)) });
   if (tag) params.set('tag', tag);
@@ -1058,9 +1069,9 @@ export async function fetchSource(source, options = {}) {
     case 'themuse':
       return fetchTheMuse(source.identifier);
     case 'weworkremotely':
-      return fetchWeWorkRemotely(source.identifier);
+      return fetchWeWorkRemotely(source.identifier, options.category);
     case 'jobicy':
-      return fetchJobicy(source.identifier);
+      return fetchJobicy(source.identifier, options.category);
     case 'adzuna':
       return fetchAdzuna(source.identifier, options.env);
     case 'rss':

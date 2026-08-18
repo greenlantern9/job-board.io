@@ -20,6 +20,7 @@ import {
 import { suggestCompanies } from '../suggest.js';
 import { curateBoard } from '../curate.js';
 import { applyIntent } from '../intent.js';
+import { inferCategory, isCategory } from '../categories.js';
 import { getProfile, saveProfile, parseCvHeuristically, activeProfile } from '../profile.js';
 import { quietApplications, skillGapReport, FOLLOWUP_AFTER_DAYS } from '../insights.js';
 import { recordStatusChange, jobHistory, applicationHistory } from '../history.js';
@@ -74,6 +75,12 @@ function cleanFilters(input, prompt = '') {
   if (Number.isInteger(maxAgeDays) && maxAgeDays > 0 && maxAgeDays <= 365) {
     filters.maxAgeDays = maxAgeDays;
   }
+
+  // One explicit category, inferred rather than demanded. It routes the
+  // source taxonomies and the field check from a single value instead of four
+  // independent regex guesses over the same sentence, and the user can correct
+  // it in one click when the guess is wrong.
+  filters.category = isCategory(raw.category) ? String(raw.category) : inferCategory(prompt);
 
   // Fill the gaps from the sentence. Someone who wrote "$250k" should get a
   // salary floor without having to find the field under Advanced - that number

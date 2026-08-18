@@ -1165,6 +1165,22 @@ function flagInvalid(input, message) {
 
 // --- board editor ----------------------------------------------------------
 
+// Small and static, so the labels live here rather than costing a round trip
+// just to render a select.
+const CATEGORIES = [
+  ['', 'Work it out from what I wrote'],
+  ['creative', 'Photo, video and creative'],
+  ['software', 'Software and data'],
+  ['support', 'Customer service and support'],
+  ['marketing', 'Marketing and writing'],
+  ['sales', 'Sales and business development'],
+  ['product', 'Product and programme'],
+  ['teaching', 'Teaching and coaching'],
+  ['trades', 'Trades and field work'],
+  ['care', 'Health and care'],
+  ['other', 'Something else — search everything'],
+];
+
 function openBoardEditor(existing) {
   const board = existing && existing.id ? existing : null;
   const filters = (board && board.filters) || {};
@@ -1182,6 +1198,13 @@ function openBoardEditor(existing) {
   const minSalary = h('input', { class: 'input', type: 'number', min: '0', step: '5000', value: String(filters.minSalary || 0) });
   const remoteOnly = h('input', { type: 'checkbox', checked: Boolean(filters.remoteOnly) });
   const scoutToggle = h('input', { type: 'checkbox', checked: true });
+  const category = h(
+    'select',
+    { class: 'input' },
+    ...CATEGORIES.map(([value, label]) =>
+      h('option', { value, text: label, selected: (filters.category || '') === value })
+    )
+  );
   const LEVELS = [
     ['0', 'Internship'],
     ['1', 'Junior'],
@@ -1287,6 +1310,7 @@ function openBoardEditor(existing) {
           maxAgeDays: maxAge.value === '' ? undefined : Number(maxAge.value),
           companies: companies.value,
           companyMode: companyMode.value,
+          category: category.value || undefined,
         },
         scout: scoutToggle.checked,
       };
@@ -1319,6 +1343,15 @@ function openBoardEditor(existing) {
       'What are you looking for?',
       prompt,
       'Plain English, the way you would tell a friend. This is what finds your sources and ranks every job — it is the only part that really matters.'
+    ),
+
+    // Under the sentence it is inferred from, so the connection is obvious and
+    // a wrong guess is one click to fix. Left blank it is worked out from what
+    // they wrote, which is the case that needs no thought at all.
+    fieldRow(
+      'Kind of work',
+      category,
+      'Decides which job sources are searched and what counts as the wrong field. Leave it alone unless the results look like the wrong line of work.'
     ),
 
     // Visible rather than buried under Advanced, because it spends money. For
