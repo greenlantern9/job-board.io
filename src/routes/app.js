@@ -1086,12 +1086,15 @@ export const APP_ROUTES = {
   'POST /api/leads/update': { handler: updateLead },
   'POST /api/boards/add-jobs': { handler: addJobs },
 
-  'GET /api/sources': { handler: listSources },
-  'POST /api/sources/create': { handler: createSource },
-  'POST /api/sources/update': { handler: updateSource },
-  'POST /api/sources/delete': { handler: deleteSource },
-  'POST /api/sources/test': { handler: testSource },
-  'POST /api/sources/suggest': { handler: suggestSources },
+  // Owner only, for now. Sources are not ready to be shown to users, and
+  // hiding the button while leaving the endpoints open would be a UI change
+  // dressed up as a restriction - anyone could still call them directly.
+  'GET /api/sources': { handler: listSources, admin: true },
+  'POST /api/sources/create': { handler: createSource, admin: true },
+  'POST /api/sources/update': { handler: updateSource, admin: true },
+  'POST /api/sources/delete': { handler: deleteSource, admin: true },
+  'POST /api/sources/test': { handler: testSource, admin: true },
+  'POST /api/sources/suggest': { handler: suggestSources, admin: true },
   'POST /api/account/ai-check': { handler: aiCheck },
 
   'GET /api/jobs': { handler: listJobs },

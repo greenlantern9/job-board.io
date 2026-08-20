@@ -119,6 +119,14 @@ async function handleApi(request, env, executionCtx, url) {
     }
   }
 
+  // Routes the owner alone may call. Answered as 404 rather than 403, so the
+  // endpoint does not confirm it exists to anyone who is not entitled to it -
+  // the same treatment /api/admin/stats already gets.
+  if (route.admin) {
+    const gate = await adminGate(env, request, ctx);
+    if (!gate.ok) return notFound('No such endpoint.');
+  }
+
   // Keep last_seen_at roughly current for the session list without writing on
   // every single request.
   if (ctx.session && Date.now() - new Date(ctx.session.last_seen_at).getTime() > SESSION_TOUCH_MS) {

@@ -333,6 +333,7 @@ export function publicUser(user) {
     email: user.email,
     emailVerified: Boolean(user.email_verified),
     mfaEnabled: Boolean(user.totp_enabled),
+    isAdmin: Boolean(user.is_admin),
     timezone: user.timezone || 'UTC',
     createdAt: user.created_at,
     recoveryCodesRemaining: parseJson(user.recovery_codes, []).length,

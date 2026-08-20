@@ -72,3 +72,21 @@ test('the address comparison ignores case and surrounding spaces', async () => {
   );
   assert.equal(result.ok, true);
 });
+
+test('every sources endpoint is owner-only', async () => {
+  // Hiding the sidebar button is presentation. These flags are the restriction,
+  // and losing one would quietly reopen the whole surface to every account.
+  const { APP_ROUTES } = await import('../src/routes/app.js');
+  const sources = Object.entries(APP_ROUTES).filter(([key]) => key.includes('/api/sources'));
+  assert.ok(sources.length >= 6, 'expected the sources routes to be present');
+  const open = sources.filter(([, route]) => route.admin !== true).map(([key]) => key);
+  assert.deepEqual(open, [], 'these sources routes are not owner-gated');
+});
+
+test('ordinary board endpoints are not owner-gated', async () => {
+  // The counterpart: the gate must not have been applied so broadly that normal
+  // use needs admin.
+  const { APP_ROUTES } = await import('../src/routes/app.js');
+  assert.notEqual(APP_ROUTES['GET /api/boards'].admin, true);
+  assert.notEqual(APP_ROUTES['POST /api/boards/create'].admin, true);
+});

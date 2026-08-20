@@ -410,6 +410,23 @@ async function enterApp(user) {
   $('#sidebar-email').textContent = user.email;
   $('#avatar').textContent = (user.email[0] || '?').toUpperCase();
 
+  // Sources are not ready for users to see or configure, so the entry point is
+  // the owner's alone. Added here rather than in boot() because that runs
+  // before the session is known, when every account looks like a stranger.
+  //
+  // Hiding the button is presentation only - the endpoints behind it are gated
+  // on the server, which is what actually restricts them.
+  if (user.isAdmin && !$('#sources-btn')) {
+    $('.sidebar__section').append(
+      h('button', {
+        id: 'sources-btn',
+        class: 'btn btn--ghost btn--sm btn--block',
+        text: 'Sources',
+        onclick: openSources,
+      })
+    );
+  }
+
   if (!user.emailVerified) {
     banner('Confirm your email address to start receiving alerts.', 'warn');
   }
@@ -1523,293 +1540,6 @@ function openBoardEditor(existing) {
 
 // --- sources ---------------------------------------------------------------
 
-async function openSources() {
-  if (!state.boardId) return;
-  const body = h('div', {});
-  showModal('Sources', body, { wide: true });
-  await renderSources(body);
-}
-
-async function renderSources(container) {
-  clear(container);
-  const { sources, board } = await api(`/api/sources?boardId=${encodeURIComponent(state.boardId)}`);
-
-  const rows = h('div', { class: 'list-rows' });
-  if (sources.length === 0) {
-    rows.append(
-      h('p', {
-        class: 'muted',
-        style: 'font-size:.875rem',
-        text: 'None connected yet — discovery runs automatically after a board is created.',
-      })
-    );
-  }
-  for (const source of sources) {
-    rows.append(
-      h(
-        'div',
-        { class: 'list-row' },
-        h('span', { class: `dot${source.lastStatus ? ` dot--${source.lastStatus}` : ''}` }),
-        h(
-          'div',
-          { class: 'list-row__main' },
-          h(
-            'span',
-            { class: 'list-row__title' },
-            source.label || source.identifier,
-            source.auto ? h('span', { class: 'tag', style: 'margin-left:.5rem', text: 'auto' }) : null
-          ),
-          h('span', {
-            class: 'list-row__sub',
-            text: source.lastError
-              ? `${source.kind} · ${source.lastError}`
-              : `${source.kind} · ${source.identifier} · ${source.foundCount} matching`,
-          })
-        ),
-        h('button', {
-          class: 'btn btn--ghost btn--sm',
-          text: source.enabled ? 'Pause' : 'Resume',
-          onclick: async () => {
-            await api('/api/sources/update', {
-              method: 'POST',
-              body: { id: source.id, enabled: !source.enabled },
-            });
-            await renderSources(container);
-          },
-        }),
-        h('button', {
-          class: 'btn btn--danger btn--sm',
-          text: 'Remove',
-          onclick: async () => {
-            await api('/api/sources/delete', { method: 'POST', body: { id: source.id } });
-            await renderSources(container);
-          },
-        })
-      )
-    );
-  }
-
-  const kind = h(
-    'select',
-    { class: 'select' },
-    h('option', { value: 'greenhouse' }, 'Greenhouse'),
-    h('option', { value: 'lever' }, 'Lever'),
-    h('option', { value: 'ashby' }, 'Ashby'),
-    h('option', { value: 'rss' }, 'RSS / Atom feed')
-  );
-  const identifier = h('input', { class: 'input', placeholder: 'stripe' });
-  const label = h('input', { class: 'input', placeholder: 'Stripe (optional)' });
-  const result = h('div', { class: 'notice', hidden: true });
-
-  kind.addEventListener('change', () => {
-    identifier.placeholder = kind.value === 'rss' ? 'https://example.com/jobs.rss' : 'stripe';
-  });
-
-  const test = h('button', { class: 'btn btn--ghost', text: 'Test' });
-  test.addEventListener(
-    'click',
-    busy(test, 'Testing…', async () => {
-      const res = await api('/api/sources/test', {
-        method: 'POST',
-        body: { kind: kind.value, identifier: identifier.value.trim() },
-      });
-      result.hidden = false;
-      if (res.ok) {
-        result.className = 'notice notice--ok';
-        result.textContent =
-          res.count === 0
-            ? 'Reached it, but it lists no open roles right now.'
-            : `Found ${res.count} open roles, e.g. ${res.sample.map((j) => j.title).join(', ')}`;
-      } else {
-        result.className = 'notice notice--error';
-        result.textContent = res.error;
-      }
-    })
-  );
-
-  const add = h('button', { class: 'btn btn--primary', text: 'Add source' });
-  add.addEventListener(
-    'click',
-    busy(add, 'Adding…', async () => {
-      await api('/api/sources/create', {
-        method: 'POST',
-        body: {
-          boardId: state.boardId,
-          kind: kind.value,
-          identifier: identifier.value.trim(),
-          label: label.value.trim(),
-        },
-      });
-      identifier.value = '';
-      label.value = '';
-      result.hidden = true;
-      await renderSources(container);
-      toast('Source added — hit Refresh to pull it in');
-    })
-  );
-
-  // --- discovery ---
-  const curate = h('button', { class: 'btn btn--primary', text: 'Find sources now' });
-  curate.addEventListener(
-    'click',
-    busy(curate, 'Searching…', async () => {
-      await runCuration();
-      await renderSources(container);
-    })
-  );
-
-  const suggestOut = h('div', { class: 'list-rows', style: 'margin-top:.75rem' });
-  const suggest = h('button', { class: 'btn btn--ghost', text: 'Suggest similar companies' });
-  suggest.addEventListener(
-    'click',
-    busy(suggest, 'Thinking…', async () => {
-      clear(suggestOut);
-      const res = await api('/api/sources/suggest', {
-        method: 'POST',
-        body: { boardId: state.boardId },
-      });
-      if (!res.ok) {
-        suggestOut.append(h('div', { class: 'notice notice--warn', text: res.error }));
-        return;
-      }
-      if (res.companies.length === 0) {
-        suggestOut.append(
-          h('div', {
-            class: 'notice',
-            text: `Checked ${res.checked} candidates but none had a reachable job board right now.`,
-          })
-        );
-        return;
-      }
-      for (const company of res.companies) {
-        suggestOut.append(
-          h(
-            'div',
-            { class: 'list-row' },
-            h('span', { class: 'dot dot--ok' }),
-            h(
-              'div',
-              { class: 'list-row__main' },
-              h('span', { class: 'list-row__title', text: `${company.name} · ${company.count} open` }),
-              h('span', { class: 'list-row__sub', text: `${company.kind} · ${company.reason}` })
-            ),
-            h('button', {
-              class: 'btn btn--primary btn--sm',
-              text: 'Add',
-              onclick: async (event) => {
-                await busy(event.target, 'Adding…', async () => {
-                  await api('/api/sources/create', {
-                    method: 'POST',
-                    body: {
-                      boardId: state.boardId,
-                      kind: company.kind,
-                      identifier: company.identifier,
-                      label: company.name,
-                    },
-                  });
-                  toast(`${company.name} connected`);
-                  await renderSources(container);
-                })(event);
-              },
-            })
-          )
-        );
-      }
-    })
-  );
-
-  // Definitive answer on whether the model is reachable. The failure modes all
-  // look the same from the outside, so this reports the actual reason.
-  const aiOut = h('div', { style: 'margin-top:.75rem' });
-  const aiBtn = h('button', { class: 'btn btn--ghost btn--sm', text: 'Check AI connection' });
-  aiBtn.addEventListener(
-    'click',
-    busy(aiBtn, 'Checking…', async () => {
-      const res = await api('/api/account/ai-check', { method: 'POST', body: {} });
-      clear(aiOut).append(
-        h('div', {
-          class: `notice notice--${res.ok ? 'ok' : res.state === 'missing' ? 'warn' : 'error'}`,
-          text: res.message,
-        })
-      );
-
-      // When it cannot see the key, show what it *can* see. "The secret exists
-      // in the dashboard" and "the Worker can read it" are different claims,
-      // and this is the only thing that tells them apart.
-      if (res.bindings) {
-        const { present, allNames } = res.bindings;
-        const rows = Object.entries(present).map(([name, ok]) =>
-          h(
-            'div',
-            { class: 'list-row' },
-            h('span', { class: `dot${ok ? ' dot--ok' : ' dot--error'}` }),
-            h(
-              'div',
-              { class: 'list-row__main' },
-              h('span', { class: 'list-row__title', text: name }),
-              h('span', { class: 'list-row__sub', text: ok ? 'visible to this Worker' : 'not set' })
-            )
-          )
-        );
-        aiOut.append(
-          h('p', {
-            class: 'label',
-            style: 'margin-top:1rem',
-            text: `What Worker "${res.bindings.worker}" can see`,
-          }),
-          h('div', { class: 'list-rows' }, ...rows),
-          h('p', {
-            class: 'hint',
-            text: `All bindings: ${allNames.join(', ')}`,
-          }),
-          h('p', {
-            class: 'hint',
-            text: `If the Worker you are editing in the Cloudflare dashboard is not called "${res.bindings.worker}", the secrets are going somewhere this code never reads.`,
-          })
-        );
-      }
-    })
-  );
-
-  container.append(
-    h(
-      'div',
-      { class: 'panel' },
-      h('h3', { text: 'AI features' }),
-      h('p', {
-        text: 'Source discovery and criteria-aware ranking both need an Anthropic API key on the Worker. Without one the board still runs on the built-in ranking.',
-      }),
-      aiBtn,
-      aiOut
-    ),
-    h(
-      'div',
-      { class: 'panel' },
-      h('h3', { text: 'Where these jobs come from' }),
-      h('p', {
-        text: board && board.curateNote
-          ? board.curateNote
-          : 'Sources are chosen for you from your criteria, verified against a live job board, and re-checked weekly. Ones that go quiet or start failing are retired automatically.',
-      }),
-      rows,
-      h('div', { style: 'display:flex;gap:.5rem;margin-top:1rem' }, curate, suggest),
-      suggestOut
-    ),
-    h(
-      'details',
-      { class: 'panel' },
-      h('summary', { style: 'cursor:pointer;font-weight:600;font-size:.9375rem', text: 'Add one by hand' }),
-      h('p', {
-        style: 'margin-top:.75rem',
-        text: 'Rarely needed. For an ATS, use the identifier from the careers URL — boards.greenhouse.io/stripe means "stripe".',
-      }),
-      h('div', { class: 'row' }, fieldRow('Type', kind), fieldRow('Identifier', identifier)),
-      fieldRow('Label', label, 'Optional. Shown instead of the identifier.'),
-      result,
-      h('div', { style: 'display:flex;gap:.5rem;justify-content:flex-end' }, test, add)
-    )
-  );
-}
 
 // --- alerts ----------------------------------------------------------------
 
@@ -2220,6 +1950,294 @@ async function renderInsights(container, afterDays) {
 }
 
 // --- candidate profile (optional) ------------------------------------------
+
+async function openSources() {
+  if (!state.boardId) return;
+  const body = h('div', {});
+  showModal('Sources', body, { wide: true });
+  await renderSources(body);
+}
+
+async function renderSources(container) {
+  clear(container);
+  const { sources, board } = await api(`/api/sources?boardId=${encodeURIComponent(state.boardId)}`);
+
+  const rows = h('div', { class: 'list-rows' });
+  if (sources.length === 0) {
+    rows.append(
+      h('p', {
+        class: 'muted',
+        style: 'font-size:.875rem',
+        text: 'None connected yet — discovery runs automatically after a board is created.',
+      })
+    );
+  }
+  for (const source of sources) {
+    rows.append(
+      h(
+        'div',
+        { class: 'list-row' },
+        h('span', { class: `dot${source.lastStatus ? ` dot--${source.lastStatus}` : ''}` }),
+        h(
+          'div',
+          { class: 'list-row__main' },
+          h(
+            'span',
+            { class: 'list-row__title' },
+            source.label || source.identifier,
+            source.auto ? h('span', { class: 'tag', style: 'margin-left:.5rem', text: 'auto' }) : null
+          ),
+          h('span', {
+            class: 'list-row__sub',
+            text: source.lastError
+              ? `${source.kind} · ${source.lastError}`
+              : `${source.kind} · ${source.identifier} · ${source.foundCount} matching`,
+          })
+        ),
+        h('button', {
+          class: 'btn btn--ghost btn--sm',
+          text: source.enabled ? 'Pause' : 'Resume',
+          onclick: async () => {
+            await api('/api/sources/update', {
+              method: 'POST',
+              body: { id: source.id, enabled: !source.enabled },
+            });
+            await renderSources(container);
+          },
+        }),
+        h('button', {
+          class: 'btn btn--danger btn--sm',
+          text: 'Remove',
+          onclick: async () => {
+            await api('/api/sources/delete', { method: 'POST', body: { id: source.id } });
+            await renderSources(container);
+          },
+        })
+      )
+    );
+  }
+
+  const kind = h(
+    'select',
+    { class: 'select' },
+    h('option', { value: 'greenhouse' }, 'Greenhouse'),
+    h('option', { value: 'lever' }, 'Lever'),
+    h('option', { value: 'ashby' }, 'Ashby'),
+    h('option', { value: 'rss' }, 'RSS / Atom feed')
+  );
+  const identifier = h('input', { class: 'input', placeholder: 'stripe' });
+  const label = h('input', { class: 'input', placeholder: 'Stripe (optional)' });
+  const result = h('div', { class: 'notice', hidden: true });
+
+  kind.addEventListener('change', () => {
+    identifier.placeholder = kind.value === 'rss' ? 'https://example.com/jobs.rss' : 'stripe';
+  });
+
+  const test = h('button', { class: 'btn btn--ghost', text: 'Test' });
+  test.addEventListener(
+    'click',
+    busy(test, 'Testing…', async () => {
+      const res = await api('/api/sources/test', {
+        method: 'POST',
+        body: { kind: kind.value, identifier: identifier.value.trim() },
+      });
+      result.hidden = false;
+      if (res.ok) {
+        result.className = 'notice notice--ok';
+        result.textContent =
+          res.count === 0
+            ? 'Reached it, but it lists no open roles right now.'
+            : `Found ${res.count} open roles, e.g. ${res.sample.map((j) => j.title).join(', ')}`;
+      } else {
+        result.className = 'notice notice--error';
+        result.textContent = res.error;
+      }
+    })
+  );
+
+  const add = h('button', { class: 'btn btn--primary', text: 'Add source' });
+  add.addEventListener(
+    'click',
+    busy(add, 'Adding…', async () => {
+      await api('/api/sources/create', {
+        method: 'POST',
+        body: {
+          boardId: state.boardId,
+          kind: kind.value,
+          identifier: identifier.value.trim(),
+          label: label.value.trim(),
+        },
+      });
+      identifier.value = '';
+      label.value = '';
+      result.hidden = true;
+      await renderSources(container);
+      toast('Source added — hit Refresh to pull it in');
+    })
+  );
+
+  // --- discovery ---
+  const curate = h('button', { class: 'btn btn--primary', text: 'Find sources now' });
+  curate.addEventListener(
+    'click',
+    busy(curate, 'Searching…', async () => {
+      await runCuration();
+      await renderSources(container);
+    })
+  );
+
+  const suggestOut = h('div', { class: 'list-rows', style: 'margin-top:.75rem' });
+  const suggest = h('button', { class: 'btn btn--ghost', text: 'Suggest similar companies' });
+  suggest.addEventListener(
+    'click',
+    busy(suggest, 'Thinking…', async () => {
+      clear(suggestOut);
+      const res = await api('/api/sources/suggest', {
+        method: 'POST',
+        body: { boardId: state.boardId },
+      });
+      if (!res.ok) {
+        suggestOut.append(h('div', { class: 'notice notice--warn', text: res.error }));
+        return;
+      }
+      if (res.companies.length === 0) {
+        suggestOut.append(
+          h('div', {
+            class: 'notice',
+            text: `Checked ${res.checked} candidates but none had a reachable job board right now.`,
+          })
+        );
+        return;
+      }
+      for (const company of res.companies) {
+        suggestOut.append(
+          h(
+            'div',
+            { class: 'list-row' },
+            h('span', { class: 'dot dot--ok' }),
+            h(
+              'div',
+              { class: 'list-row__main' },
+              h('span', { class: 'list-row__title', text: `${company.name} · ${company.count} open` }),
+              h('span', { class: 'list-row__sub', text: `${company.kind} · ${company.reason}` })
+            ),
+            h('button', {
+              class: 'btn btn--primary btn--sm',
+              text: 'Add',
+              onclick: async (event) => {
+                await busy(event.target, 'Adding…', async () => {
+                  await api('/api/sources/create', {
+                    method: 'POST',
+                    body: {
+                      boardId: state.boardId,
+                      kind: company.kind,
+                      identifier: company.identifier,
+                      label: company.name,
+                    },
+                  });
+                  toast(`${company.name} connected`);
+                  await renderSources(container);
+                })(event);
+              },
+            })
+          )
+        );
+      }
+    })
+  );
+
+  // Definitive answer on whether the model is reachable. The failure modes all
+  // look the same from the outside, so this reports the actual reason.
+  const aiOut = h('div', { style: 'margin-top:.75rem' });
+  const aiBtn = h('button', { class: 'btn btn--ghost btn--sm', text: 'Check AI connection' });
+  aiBtn.addEventListener(
+    'click',
+    busy(aiBtn, 'Checking…', async () => {
+      const res = await api('/api/account/ai-check', { method: 'POST', body: {} });
+      clear(aiOut).append(
+        h('div', {
+          class: `notice notice--${res.ok ? 'ok' : res.state === 'missing' ? 'warn' : 'error'}`,
+          text: res.message,
+        })
+      );
+
+      // When it cannot see the key, show what it *can* see. "The secret exists
+      // in the dashboard" and "the Worker can read it" are different claims,
+      // and this is the only thing that tells them apart.
+      if (res.bindings) {
+        const { present, allNames } = res.bindings;
+        const rows = Object.entries(present).map(([name, ok]) =>
+          h(
+            'div',
+            { class: 'list-row' },
+            h('span', { class: `dot${ok ? ' dot--ok' : ' dot--error'}` }),
+            h(
+              'div',
+              { class: 'list-row__main' },
+              h('span', { class: 'list-row__title', text: name }),
+              h('span', { class: 'list-row__sub', text: ok ? 'visible to this Worker' : 'not set' })
+            )
+          )
+        );
+        aiOut.append(
+          h('p', {
+            class: 'label',
+            style: 'margin-top:1rem',
+            text: `What Worker "${res.bindings.worker}" can see`,
+          }),
+          h('div', { class: 'list-rows' }, ...rows),
+          h('p', {
+            class: 'hint',
+            text: `All bindings: ${allNames.join(', ')}`,
+          }),
+          h('p', {
+            class: 'hint',
+            text: `If the Worker you are editing in the Cloudflare dashboard is not called "${res.bindings.worker}", the secrets are going somewhere this code never reads.`,
+          })
+        );
+      }
+    })
+  );
+
+  container.append(
+    h(
+      'div',
+      { class: 'panel' },
+      h('h3', { text: 'AI features' }),
+      h('p', {
+        text: 'Source discovery and criteria-aware ranking both need an Anthropic API key on the Worker. Without one the board still runs on the built-in ranking.',
+      }),
+      aiBtn,
+      aiOut
+    ),
+    h(
+      'div',
+      { class: 'panel' },
+      h('h3', { text: 'Where these jobs come from' }),
+      h('p', {
+        text: board && board.curateNote
+          ? board.curateNote
+          : 'Sources are chosen for you from your criteria, verified against a live job board, and re-checked weekly. Ones that go quiet or start failing are retired automatically.',
+      }),
+      rows,
+      h('div', { style: 'display:flex;gap:.5rem;margin-top:1rem' }, curate, suggest),
+      suggestOut
+    ),
+    h(
+      'details',
+      { class: 'panel' },
+      h('summary', { style: 'cursor:pointer;font-weight:600;font-size:.9375rem', text: 'Add one by hand' }),
+      h('p', {
+        style: 'margin-top:.75rem',
+        text: 'Rarely needed. For an ATS, use the identifier from the careers URL — boards.greenhouse.io/stripe means "stripe".',
+      }),
+      h('div', { class: 'row' }, fieldRow('Type', kind), fieldRow('Identifier', identifier)),
+      fieldRow('Label', label, 'Optional. Shown instead of the identifier.'),
+      result,
+      h('div', { style: 'display:flex;gap:.5rem;justify-content:flex-end' }, test, add)
+    )
+  );
+}
 
 async function openProfile() {
   const body = h('div', {});
@@ -2822,7 +2840,6 @@ async function boot() {
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Profile', onclick: openProfile }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Applications', onclick: openApplications }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Insights', onclick: openInsights }),
-    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Sources', onclick: openSources }),
     h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Alerts', onclick: openAlerts })
   );
 

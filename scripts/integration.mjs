@@ -160,58 +160,30 @@ section('boards');
 
 section('sources');
 {
-  const bad = await call('/api/sources/create', {
-    method: 'POST',
-    body: { boardId, kind: 'rss', identifier: 'https://127.0.0.1/feed' },
-  });
-  check('an SSRF feed URL is refused', bad.status === 400, bad.payload);
-
-  const probe = await call('/api/sources/test', {
-    method: 'POST',
-    body: { kind: 'greenhouse', identifier: 'gitlab' },
-  });
-  check('a live Greenhouse board can be reached', probe.payload.ok === true, probe.payload);
-  if (probe.payload.ok) console.log(`       -> ${probe.payload.count} open roles`);
-
-  // Seed company boards are attached on creation, so a board is useful without
-  // an API key and without anyone connecting anything.
-  const seeded = await call(`/api/sources?boardId=${boardId}`);
-  const sources = seeded.payload.sources || [];
-  check('company boards are seeded automatically', sources.length > 0, seeded.payload);
-  check(
-    'seeding brings in per-company boards, not just aggregators',
-    sources.some((s) => ['greenhouse', 'lever', 'ashby', 'smartrecruiters'].includes(s.kind)),
-    sources.map((s) => s.kind)
-  );
-  check('seeded sources are marked as automatic', sources.every((s) => s.auto !== false));
-
-  // Pick a company the board does not already have, rather than naming one and
-  // hoping. Seeds and the shared catalogue both grow, and the catalogue outlives
-  // any change to the seed list - so a hardcoded example eventually collides
-  // with one of them and the failure looks like a broken endpoint rather than a
-  // stale fixture.
-  const candidates = [
-    { kind: 'smartrecruiters', identifier: 'Visa', label: 'Visa' },
-    { kind: 'greenhouse', identifier: 'benchling', label: 'Benchling' },
-    { kind: 'greenhouse', identifier: 'sentry', label: 'Sentry' },
-    { kind: 'lever', identifier: 'netflix', label: 'Netflix' },
+  // Sources are owner-only while the feature is unfinished, so this account -
+  // an ordinary signed-in user - must be refused everywhere.
+  //
+  // The functional coverage these checks used to provide has not been dropped.
+  // Feed-URL and SSRF validation is exercised directly in test/sources.test.js,
+  // and that seeding works is proved below by a refresh that fetches thousands
+  // of postings, which is only possible if company boards were attached.
+  const endpoints = [
+    ['GET', `/api/sources?boardId=${boardId}`, undefined],
+    ['POST', '/api/sources/create', { boardId, kind: 'greenhouse', identifier: 'gitlab' }],
+    ['POST', '/api/sources/update', { id: 'anything', enabled: false }],
+    ['POST', '/api/sources/delete', { id: 'anything' }],
+    ['POST', '/api/sources/test', { kind: 'greenhouse', identifier: 'gitlab' }],
+    ['POST', '/api/sources/suggest', { boardId }],
   ];
-  const present = new Set(sources.map((s) => `${s.kind}:${s.identifier}`.toLowerCase()));
-  const fresh = candidates.find((c) => !present.has(`${c.kind}:${c.identifier}`.toLowerCase()));
 
-  const added = await call('/api/sources/create', {
-    method: 'POST',
-    body: { boardId, ...fresh },
-  });
-  check('a source can still be added by hand', added.status === 200, added.payload);
-
-  // The same one again, so the check is genuinely about duplicates rather
-  // than about whichever company happened to be free.
-  const dupe = await call('/api/sources/create', {
-    method: 'POST',
-    body: { boardId, kind: fresh.kind, identifier: fresh.identifier },
-  });
-  check('a duplicate source is refused', dupe.status === 400, dupe.payload);
+  const refused = [];
+  for (const [method, path, body] of endpoints) {
+    const res = method === 'GET' ? await call(path) : await call(path, { method, body });
+    // 404 rather than 403: the endpoint should not confirm it exists to an
+    // account that may not use it.
+    if (res.status !== 404) refused.push(`${method} ${path} -> ${res.status}`);
+  }
+  check('every sources endpoint is closed to an ordinary account', refused.length === 0, refused);
 }
 
 section('ingest + ranking');
@@ -221,6 +193,10 @@ section('ingest + ranking');
   const summary = refreshed.payload.summary || {};
   console.log(`       -> fetched ${summary.fetched}, added ${summary.added}, filtered ${summary.filteredOut}`);
   check('jobs were ingested', summary.added > 0, summary);
+  // Nothing could have been fetched unless company boards were attached to the
+  // board automatically, which is what the old sources checks asserted directly
+  // before those endpoints became owner-only.
+  check('company boards were seeded on creation', summary.fetched > 0, summary);
 
   const jobs = await call(`/api/jobs?boardId=${boardId}`);
   const rows = jobs.payload.jobs || [];
