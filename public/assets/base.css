@@ -360,3 +360,38 @@ svg {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Progress while a board is being built.
+ *
+ * Paired with an elapsed-time estimate rather than a spinner: reading every
+ * opening at twenty-odd employers takes long enough that a spinner reads as
+ * stuck, which is how it was reported. */
+.progress {
+  width: 100%;
+  max-width: 22rem;
+  height: 6px;
+  margin: 1rem 0 .5rem;
+  border-radius: 999px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+
+.progress__fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: progress-fill 15s cubic-bezier(.15, .75, .3, 1) forwards;
+}
+
+/* Stops short of the end on purpose: the board is built when the jobs arrive,
+   not when a timer runs out, and a bar sitting at 100% while nothing happens is
+   worse than one still visibly moving. */
+@keyframes progress-fill {
+  from { width: 0; }
+  to { width: 96%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress__fill { animation: none; width: 40%; }
+}

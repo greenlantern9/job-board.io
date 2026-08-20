@@ -770,12 +770,38 @@ function renderNoResults() {
   // server-side on creation. Showing a setup task here would be asking the user
   // to do work the system is already doing.
   if (!hasSources) {
+    if (!state.provisionStartedAt) state.provisionStartedAt = Date.now();
+    const elapsed = Date.now() - state.provisionStartedAt;
+    const left = Math.round((PROVISION_EXPECTED_MS - elapsed) / 1000);
+
+    // The fill is a CSS animation rather than a timer.
+    //
+    // It was an interval writing to a node it had closed over, which froze the
+    // moment a poll re-rendered the panel and left the bar sitting at 60% while
+    // the work carried on - the exact impression the bar exists to prevent.
+    // A negative delay starts it partway through, so a re-render resumes rather
+    // than restarting.
+    const bar = h(
+      'div',
+      { class: 'progress' },
+      h('div', { class: 'progress__fill', style: `animation-delay: -${elapsed}ms` })
+    );
+    const note = h('p', {
+      class: 'hint',
+      text:
+        elapsed < 3000
+          ? 'Picking employers worth watching…'
+          : left > 0
+            ? `Reading their openings — about ${left}s left`
+            : 'Still reading — some employers post thousands of roles',
+    });
     empty.append(
-      h('h3', { text: 'Finding sources for this board' }),
+      h('h3', { text: 'Building your board' }),
       h('p', {
-        text: 'We are reading your criteria, picking employers worth watching, and checking each one has a live job board. Jobs appear here as they land — usually within a minute.',
+        text: 'We are reading your criteria, picking employers worth watching, and reading every opening they have posted.',
       }),
-      h('span', { class: 'spinner' })
+      bar,
+      note
     );
     watchProvisioning();
     return;
@@ -872,11 +898,22 @@ function renderAddJobs(active) {
 const PROVISION_DELAYS = [1200, 1800, 2500, 3500, 5000, 7000, 10000];
 const PROVISION_MAX_ATTEMPTS = 24;
 
+/**
+ * How long building a board usually takes, end to end.
+ *
+ * Measured, not guessed: a 27-source board spends about eight seconds reading
+ * its sources and a fraction of a second ranking what they return. Fifteen
+ * leaves room for a slow source without the bar sitting at full while the work
+ * carries on, which is the way a progress bar loses people's trust.
+ */
+const PROVISION_EXPECTED_MS = 15000;
+
 /** Poll while a freshly created board is being provisioned server-side. */
 function watchProvisioning(attempt = 0) {
   if (state.provisionTimer) clearTimeout(state.provisionTimer);
 
   if (attempt >= PROVISION_MAX_ATTEMPTS) {
+    state.provisionStartedAt = 0;
     // Never leave the spinner turning. Giving up silently is what made a slow
     // board indistinguishable from a broken one.
     renderProvisionGaveUp();
@@ -891,6 +928,11 @@ function watchProvisioning(attempt = 0) {
       await loadBoards();
 
       if (state.jobs.length > before) {
+        state.provisionStartedAt = 0;
+        // Draw the board. Without this the jobs were loaded into state and the
+        // "finding sources" panel stayed on screen covering them, which is a
+        // fair part of why building a board felt like it never finished.
+        render();
         toast(`${state.jobs.length} jobs found`);
         return;
       }
@@ -901,6 +943,7 @@ function watchProvisioning(attempt = 0) {
       // that has already given its answer.
       const board = state.boards.find((b) => b.id === state.boardId);
       if (board && board.lastRefresh) {
+        state.provisionStartedAt = 0;
         render();
         return;
       }

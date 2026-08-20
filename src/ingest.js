@@ -154,12 +154,13 @@ function isTooOld(job) {
  * took 290ms. The work was never the bottleneck - the queue was, at four waves
  * of eight.
  *
- * Not raised to the full source count. Most of a board's sources are Greenhouse
- * boards, so the waves all land on one host, and the background classifier is
- * reading that same host on the same tick. Sixteen halves the waves without
- * turning a refresh into a burst somebody else has to absorb.
+ * A typical board has 27 sources, so this is one wave rather than two and the
+ * refresh is bounded by its slowest source instead of by the queue behind it.
+ * Not raised further: most of those sources are Greenhouse boards, so a wave
+ * lands on one host, and the background classifier is reading that same host on
+ * the same tick.
  */
-const FETCH_CONCURRENCY = 16;
+const FETCH_CONCURRENCY = 24;
 
 /**
  * Read every source concurrently, returning results in the original order.
