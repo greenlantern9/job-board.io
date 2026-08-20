@@ -18,6 +18,7 @@ const STATEMENTS = [
     failed_logins INTEGER NOT NULL DEFAULT 0,
     locked_until TEXT NOT NULL DEFAULT '',
     timezone TEXT NOT NULL DEFAULT 'UTC',
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     last_login_at TEXT NOT NULL DEFAULT ''
@@ -255,6 +256,15 @@ const STATEMENTS = [
  * error is the expected outcome on every deploy after the first.
  */
 const MIGRATIONS = [
+  // Administrator status as a property of the account rather than a string
+  // comparison against configuration.
+  //
+  // The gate used to admit whoever held the address in ADMIT_EMAIL. Addresses
+  // cannot be changed in this app, so that was sound while the account existed
+  // - but accounts can be deleted, and a deleted address can be registered
+  // again by anyone. The flag cannot be claimed that way: it is granted to a
+  // user id, and a new account with the same address is a different id.
+  `ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`,
   // What each model call actually consumed. The table counted calls from the
   // start but never tokens, so the only answer to "what is this costing" was
   // arithmetic over the payload caps - an estimate nobody could check.
@@ -313,7 +323,37 @@ export async function ensureSchema(env) {
     }
   }
 
+  await grantAdmin(env);
+
   schemaReady = true;
+}
+
+/**
+ * Grant the admin flag to the configured owner, once.
+ *
+ * Only fires while no administrator exists, so the flag is bootstrapped on
+ * first deploy and never handed out again by configuration alone. Changing
+ * ADMIN_EMAIL afterwards does not move admin rights to the new address, which
+ * is the point: rights belong to an account, and moving them should take a
+ * deliberate database change rather than an edit to a committed config file.
+ */
+async function grantAdmin(env) {
+  const owner = String(env.ADMIN_EMAIL || '').trim().toLowerCase();
+  if (!owner) return;
+
+  try {
+    const existing = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM users WHERE is_admin = 1'
+    ).first();
+    if (existing && existing.n > 0) return;
+
+    await env.DB.prepare('UPDATE users SET is_admin = 1 WHERE lower(email) = ?')
+      .bind(owner)
+      .run();
+  } catch (err) {
+    // Never take down every request because the grant could not run.
+    console.error('admin grant failed', String(err && err.message));
+  }
 }
 
 /** Reset the latch - only used by tests. */

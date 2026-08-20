@@ -109,6 +109,20 @@ export async function adminGate(env, request, ctx) {
 
   if (!ctx.user || !ctx.session) return { ok: false, reason: 'signed-out' };
   if (!ctx.session.mfa_satisfied) return { ok: false, reason: 'signed-out' };
+
+  // The account has to carry the flag, not merely hold the address.
+  //
+  // Addresses cannot be changed in this app, but accounts can be deleted - and
+  // once deleted, the address is free for anyone to register. A check against
+  // ADMIN_EMAIL alone would hand the new account everything the old one had.
+  // The flag is granted to a user id and a re-registration is a different id,
+  // so that path is closed.
+  //
+  // Both are still required. The flag alone would leave admin rights sitting on
+  // an account after the owner changed, and the address alone is what this is
+  // fixing; needing both means an attacker has to obtain a specific account
+  // rather than either one of its properties.
+  if (!ctx.user.is_admin) return { ok: false, reason: 'not-owner' };
   if (String(ctx.user.email || '').trim().toLowerCase() !== owner) {
     return { ok: false, reason: 'not-owner' };
   }
