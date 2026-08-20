@@ -105,7 +105,11 @@ const SYSTEM = [
  */
 const CROSS_FIELD_SHARE = 0.4;
 
-export async function directoryFor(env, category, { limit = 20, exclude = [] } = {}) {
+/** How many employers are considered before the best are chosen. Wide, because
+ *  the ordering that matters is on a column the database cannot rank by. */
+const POOL_SIZE = 400;
+
+export async function directoryFor(env, category, { limit = 20, exclude = [], terms = [] } = {}) {
   const skip = new Set(exclude.map((e) => `${e.kind}:${e.identifier}`.toLowerCase()));
   const picked = [];
   const seen = new Set();
@@ -124,46 +128,63 @@ export async function directoryFor(env, category, { limit = 20, exclude = [] } =
   const crossField = Math.max(1, Math.round(limit * CROSS_FIELD_SHARE));
   const inField = limit - crossField;
 
-  const own = await queryAll(
-    env,
-    `SELECT kind, identifier, name, job_count FROM company_directory
-     WHERE category = ? AND failed_streak < ?
-     ORDER BY job_count DESC, verified_at DESC
-     LIMIT ?`,
-    category,
-    FAILED_STREAK_LIMIT,
-    inField + exclude.length
-  );
-  add(own, inField);
+  // Ranked by what the employer advertises, not merely by how much of it.
+  //
+  // Size was the only signal here, and size does not say whether a company is
+  // hiring for the role somebody searched for. The pool is drawn wide and then
+  // ordered by how many of the searched-for words appear in the titles that
+  // employer actually posts, which classification recorded while reading them.
+  const wanted = terms
+    .map((term) => String(term || '').toLowerCase().trim())
+    .filter((term) => term.length >= 3);
 
-  // The biggest employers in the catalogue, whatever they are filed under.
-  // These are where cross-cutting roles actually sit.
-  const largest = await queryAll(
-    env,
-    `SELECT kind, identifier, name, job_count FROM company_directory
-     WHERE category <> '' AND failed_streak < ?
-     ORDER BY job_count DESC, verified_at DESC
-     LIMIT ?`,
-    FAILED_STREAK_LIMIT,
-    limit + exclude.length + picked.length
-  );
-  add(largest, limit - picked.length);
+  const rank = (rows) => {
+    if (wanted.length === 0) return rows;
+    return rows
+      .map((row) => {
+        // Whole words. A substring test let "tech" match "technical" and
+        // "technology" at every employer in the catalogue, which scored them
+        // all alike and left size deciding again.
+        const vocabulary = new Set(String(row.title_terms || '').split(' '));
+        const hits = wanted.filter((term) => vocabulary.has(term)).length;
+        return { row, hits };
+      })
+      .sort((a, b) => (b.hits - a.hits) || (b.row.job_count - a.row.job_count))
+      .map(({ row }) => row);
+  };
 
-  // Anything still missing comes from the board's own field, which may have
-  // more to give now that the cross-field slots are filled.
-  if (picked.length < limit) {
-    const more = await queryAll(
+  const own = rank(
+    await queryAll(
       env,
-      `SELECT kind, identifier, name, job_count FROM company_directory
+      `SELECT kind, identifier, name, job_count, title_terms FROM company_directory
        WHERE category = ? AND failed_streak < ?
        ORDER BY job_count DESC, verified_at DESC
        LIMIT ?`,
       category,
       FAILED_STREAK_LIMIT,
-      limit + exclude.length
-    );
-    add(more, limit - picked.length);
-  }
+      POOL_SIZE
+    )
+  );
+  add(own, inField);
+
+  // The biggest employers in the catalogue, whatever they are filed under.
+  // These are where cross-cutting roles actually sit.
+  const largest = rank(
+    await queryAll(
+      env,
+      `SELECT kind, identifier, name, job_count, title_terms FROM company_directory
+       WHERE category <> '' AND failed_streak < ?
+       ORDER BY job_count DESC, verified_at DESC
+       LIMIT ?`,
+      FAILED_STREAK_LIMIT,
+      POOL_SIZE
+    )
+  );
+  add(largest, limit - picked.length);
+
+  // Anything still missing comes from the board's own field, which may have
+  // more to give now that the cross-field slots are filled.
+  if (picked.length < limit) add(own, limit - picked.length);
 
   return picked;
 }
@@ -355,6 +376,41 @@ export async function seedDirectory(env, seeds) {
  * work is bounded, mostly happens once, and then costs nothing. Fifteen is
  * comfortably more than the twelve a single board connects.
  */
+/** Words too common across job titles to tell one employer from another. */
+const TITLE_STOPWORDS = new Set([
+  'senior', 'staff', 'lead', 'principal', 'junior', 'associate', 'the', 'and', 'for', 'with',
+  'of', 'to', 'in', 'at', 'a', 'an', 'i', 'ii', 'iii', 'iv', 'sr', 'jr', 'remote', 'us', 'usa',
+  'intern', 'internship', 'new', 'grad', 'contract', 'full', 'part', 'time', 'level',
+]);
+
+/**
+ * How many distinct title words are kept per employer.
+ *
+ * Generous on purpose, because the words worth keeping are the rare ones. At
+ * sixty this kept each employer's most frequent title words - which is to say
+ * their main line of work - and a company with ten programme-management roles
+ * among eight hundred postings recorded neither "technical" nor "programme".
+ * The question being asked is whether an employer posts a role at all, not
+ * whether it is what they mostly do.
+ */
+const TITLE_TERM_LIMIT = 250;
+
+/** The vocabulary of an employer's board, most frequent first. */
+export function titleTerms(jobs) {
+  const counts = new Map();
+  for (const job of jobs) {
+    for (const word of String(job.title || '').toLowerCase().split(/[^a-z0-9+#]+/)) {
+      if (word.length < 3 || TITLE_STOPWORDS.has(word)) continue;
+      counts.set(word, (counts.get(word) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, TITLE_TERM_LIMIT)
+    .map(([word]) => word)
+    .join(' ');
+}
+
 export const CATALOGUE_TARGET = 15;
 
 /** How long before a field is worth searching again. Long, because a field that
@@ -538,7 +594,7 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
   const pending = await queryAll(
     env,
     `SELECT kind, identifier, category FROM company_directory
-     WHERE (category = '' OR job_count = 0) AND failed_streak < ?
+     WHERE (category = '' OR job_count = 0 OR title_terms = '') AND failed_streak < ?
      LIMIT ?`,
     FAILED_STREAK_LIMIT,
     limit
@@ -573,7 +629,7 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
       // hand or by discovery. This pass is only here to give it a count; it
       // must not relabel it from whatever happens to be posted this week.
       const category = row.category || (confident ? winner : 'other');
-      return { row, category, jobCount: jobs.length };
+      return { row, category, jobCount: jobs.length, terms: titleTerms(jobs) };
     } catch {
       return { row, empty: true };
     }
@@ -612,9 +668,16 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
     writes.push(
       env.DB.prepare(
         `UPDATE company_directory
-         SET category = ?, job_count = ?, verified_at = ?, failed_streak = 0
+         SET category = ?, job_count = ?, title_terms = ?, verified_at = ?, failed_streak = 0
          WHERE kind = ? AND identifier = ?`
-      ).bind(result.category, result.jobCount, now, result.row.kind, result.row.identifier)
+      ).bind(
+        result.category,
+        result.jobCount,
+        result.terms || '',
+        now,
+        result.row.kind,
+        result.row.identifier
+      )
     );
     classified += 1;
   }

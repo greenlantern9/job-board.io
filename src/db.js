@@ -181,6 +181,7 @@ const STATEMENTS = [
     identifier TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT 'other',
+    title_terms TEXT NOT NULL DEFAULT '',
     job_count INTEGER NOT NULL DEFAULT 0,
     verified_at TEXT NOT NULL DEFAULT '',
     failed_streak INTEGER NOT NULL DEFAULT 0,
@@ -256,6 +257,15 @@ const STATEMENTS = [
  * error is the expected outcome on every deploy after the first.
  */
 const MIGRATIONS = [
+  // The role words an employer's board actually contains.
+  //
+  // Employers were connected by field and by size, neither of which says
+  // whether a company is hiring for the role somebody searched. Of eighteen
+  // company boards on one programme-management board, eight were advertising
+  // programme-management roles and none of those eight had been connected.
+  // Classification already reads every title on every board; this keeps what it
+  // saw, so the choice can be made on evidence instead of on size.
+  `ALTER TABLE company_directory ADD COLUMN title_terms TEXT NOT NULL DEFAULT ''`,
   // Administrator status as a property of the account rather than a string
   // comparison against configuration.
   //

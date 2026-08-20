@@ -238,7 +238,20 @@ export async function curateBoard(env, board, { selfHost, force = false } = {}) 
       // category. Only when it cannot fill the target does anything spend.
       await seedDirectory(env, SEED_COMPANIES);
       const category = (board.filters || {}).category || 'other';
-      const catalogued = await directoryFor(env, category, { limit: SEED_LIMIT });
+      // The words that name the role, and only those.
+      //
+      // Passing the whole sentence made this worse than size ordering: "top
+      // tech company, 250k base salary minimum" put "tech", "company" and
+      // "base" into the comparison, and almost every employer's titles contain
+      // something like them.
+      const roleWords = extractRolePhrases(board.prompt || '')
+        .flatMap((phrase) => phrase.split(/\s+/))
+        .filter(Boolean);
+
+      const catalogued = await directoryFor(env, category, {
+        limit: SEED_LIMIT,
+        terms: [...new Set(roleWords)],
+      });
 
       for (const company of catalogued) {
         const inserted = await insertSource(env, board, {
