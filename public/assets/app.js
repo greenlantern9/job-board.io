@@ -1412,36 +1412,6 @@ function openBoardEditor(existing) {
       'Plain English, the way you would tell a friend. This is what finds your sources and ranks every job — it is the only part that really matters.'
     ),
 
-    // Under the sentence it is inferred from, so the connection is obvious and
-    // a wrong guess is one click to fix. Left blank it is worked out from what
-    // they wrote, which is the case that needs no thought at all.
-    fieldRow(
-      'Kind of work',
-      category,
-      'Decides which job sources are searched and what counts as the wrong field. Leave it alone unless the results look like the wrong line of work.'
-    ),
-
-    // Visible rather than buried under Advanced, because it spends money. For
-    // photography, events, coaching and trades the job boards hold nothing and
-    // this is the only part that finds anything, so it defaults to on - but it
-    // says what it costs, and turning it off is one click.
-    board
-      ? null
-      : h(
-          'div',
-          { class: 'field' },
-          h(
-            'label',
-            { class: 'checkbox' },
-            scoutToggle,
-            h('span', { text: 'Also search the open web' })
-          ),
-          h('span', {
-            class: 'hint',
-            text: 'Finds organisations to approach directly — retreats, studios, venues, local businesses — and how to approach them. Job boards do not carry that work. Costs a few cents from your daily AI budget.',
-          })
-        ),
-
     h(
       'details',
       { class: 'advanced', open: Boolean(board) },
@@ -1459,7 +1429,37 @@ function openBoardEditor(existing) {
           text: 'Sensible defaults are already applied. Everything here narrows what you see, so leaving it alone casts the widest net.',
         }),
 
-        h('div', { class: 'label', text: 'Companies' }),
+        h('div', { class: 'label', text: 'How the search runs' }),
+
+        // Left blank, the field is worked out from what they wrote, which is
+        // the case that needs no thought at all - so it sits here rather than
+        // beside the sentence it is inferred from.
+        fieldRow(
+          'Kind of work',
+          category,
+          'Decides which job sources are searched and what counts as the wrong field. Leave it alone unless the results look like the wrong line of work.'
+        ),
+
+        // Still says what it costs, since it is the one control in here that
+        // spends money rather than narrowing what is already found.
+        board
+          ? null
+          : h(
+              'div',
+              { class: 'field' },
+              h(
+                'label',
+                { class: 'checkbox' },
+                scoutToggle,
+                h('span', { text: 'Also search the open web' })
+              ),
+              h('span', {
+                class: 'hint',
+                text: 'Finds organisations to approach directly — retreats, studios, venues, local businesses — and how to approach them. Job boards do not carry that work. Costs a few cents from your daily AI budget.',
+              })
+            ),
+
+        h('div', { class: 'label', style: 'margin-top:1.5rem', text: 'Companies' }),
         fieldRow(
           'Company list',
           companies,
