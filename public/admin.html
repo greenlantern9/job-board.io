@@ -705,6 +705,52 @@
     </p>
   </section>
 
+  <section id="operations">
+    <h2>Operations</h2>
+    <p>Who is using the service, what is failing for them, and what they have
+      asked for. Failures used to be written wherever they happened — a board's
+      error column, a source's, a console line — so each was legible only to
+      whoever went looking in the right row.</p>
+
+    <div class="cards" id="ops-cards">
+      <div class="card"><h3>Loading…</h3></div>
+    </div>
+
+    <h3 style="margin-top:2rem">Accounts</h3>
+    <p>Most recently active first.</p>
+    <div class="scroll">
+      <table id="accounts-table">
+        <thead>
+          <tr><th>Account</th><th>Boards</th><th>Jobs</th><th>Applied</th><th>AI calls</th><th>Errors</th><th>Last seen</th></tr>
+        </thead>
+        <tbody><tr><td colspan="7">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:2rem">Recent failures</h3>
+    <p>What broke, for whom, and when. A refresh that fails, a source that
+      cannot be read, a daily allowance running out.</p>
+    <div class="scroll">
+      <table id="errors-table">
+        <thead>
+          <tr><th>When</th><th>Kind</th><th>Account</th><th>Detail</th></tr>
+        </thead>
+        <tbody><tr><td colspan="4">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:2rem">Feedback</h3>
+    <p id="feedback-note">Bugs and ideas reported from the app.</p>
+    <div class="scroll">
+      <table id="feedback-table">
+        <thead>
+          <tr><th>When</th><th>Type</th><th>From</th><th>What they said</th></tr>
+        </thead>
+        <tbody><tr><td colspan="4">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
   <footer>
     Measured 20 August 2026 · figures from live calls, not documentation
   </footer>

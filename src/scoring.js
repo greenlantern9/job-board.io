@@ -6,6 +6,7 @@
 // we keep the heuristic result rather than leaving jobs unscored.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { recordError } from './ops.js';
 import { contextAdjustment, heuristicScore } from './rank.js';
 import { reserveCall, recordUsage, budgetStatus, MODEL_SCORE_FLOOR } from './budget.js';
 
@@ -246,6 +247,12 @@ export async function scoreJobs(env, jobs, board, { profile = null } = {}) {
       warnings.push(
         `Daily AI budget reached (${status.limit} calls). The rest were ranked with the built-in scorer; it resets tomorrow.`
       );
+      await recordError(env, {
+        userId: board.user_id,
+        kind: 'budget-exhausted',
+        message: `Daily allowance of ${status.limit} calls reached`,
+        context: board.name || board.id,
+      });
       break;
     }
     try {

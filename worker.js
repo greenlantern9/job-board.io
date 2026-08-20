@@ -25,9 +25,10 @@ import { APP_ROUTES } from './src/routes/app.js';
 import { boardsDueForRefresh, refreshBoard } from './src/ingest.js';
 import { curateBoard, boardsDueForCuration } from './src/curate.js';
 import { topUpCatalogue, loadGreenhouseList, classifyBoards } from './src/directory.js';
+import { recordError } from './src/ops.js';
 import { VERSION } from './src/version.js';
 import { runNotifications, applyUnsubscribe } from './src/notify.js';
-import { adminGate, adminStats } from './src/admin.js';
+import { adminGate, adminStats, adminOperations } from './src/admin.js';
 
 const ROUTES = { ...AUTH_ROUTES, ...APP_ROUTES };
 
@@ -152,7 +153,7 @@ async function handleRequest(request, env, executionCtx) {
 
   // The admin surface. Gated identically whether it is the page or its data,
   // because a dashboard whose API is open is not gated at all.
-  if (url.pathname === '/admin' || url.pathname === '/api/admin/stats') {
+  if (url.pathname === '/admin' || url.pathname === '/api/admin/stats' || url.pathname === '/api/admin/operations') {
     const ctx = await buildContext(env, request);
     const gate = await adminGate(env, request, ctx);
 
@@ -200,6 +201,9 @@ async function handleRequest(request, env, executionCtx) {
       return notFound('No such endpoint.');
     }
 
+    if (url.pathname === '/api/admin/operations') {
+      return json(await adminOperations(env));
+    }
     if (url.pathname === '/api/admin/stats') {
       return json(await adminStats(env));
     }
@@ -327,6 +331,13 @@ async function runCron(env) {
     try {
       await refreshBoard(env, board, { selfHost });
     } catch (err) {
+      await recordError(env, {
+        userId: board.user_id,
+        kind: 'refresh-failed',
+        message: String((err && err.message) || err),
+        context: board.name || board.id,
+      });
+
       // One board's failure must not stop the rest of the tick, or a single bad
       // board would starve every other user's schedule.
       await run(

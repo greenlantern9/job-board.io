@@ -200,6 +200,38 @@ const STATEMENTS = [
     attempted_at TEXT NOT NULL,
     found INTEGER NOT NULL DEFAULT 0
   )`,
+  // Things that went wrong for somebody, kept so they can be seen.
+  //
+  // Failures were being written where they happened - a board's last_error, a
+  // source's last_error, a console line - which meant each one was visible only
+  // to whoever went looking in the right row. There was no way to answer "what
+  // is breaking for people", which is the question that matters.
+  `CREATE TABLE IF NOT EXISTS error_log (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL,
+    message TEXT NOT NULL DEFAULT '',
+    context TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_error_log_time ON error_log(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_error_log_kind ON error_log(kind, created_at DESC)`,
+
+  // What people ask for, and what they report broken.
+  `CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'idea',
+    subject TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    page TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    forwarded_at TEXT NOT NULL DEFAULT '',
+    forward_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_feedback_time ON feedback(created_at DESC)`,
+
   // Model calls per account per day. The ceiling is enforced rather than
   // advised, because every other path degrades silently when the model is
   // unavailable - so an overspend would have no symptom until the bill.

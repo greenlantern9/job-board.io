@@ -219,3 +219,116 @@ const fmt = (n) => Number(n || 0).toLocaleString();
       }
     }
   })();
+
+  // Operations: accounts, failures, feedback. A separate call from the counts,
+  // because this one carries addresses and free text.
+  (async () => {
+    const ago = (iso) => {
+      if (!iso) return 'never';
+      const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+      if (!Number.isFinite(mins)) return '—';
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      if (mins < 1440) return Math.round(mins / 60) + 'h ago';
+      return Math.round(mins / 1440) + 'd ago';
+    };
+    const fill = (id, columns, message) => {
+      const body = document.querySelector(id + ' tbody');
+      if (!body) return;
+      body.textContent = '';
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = columns;
+      td.textContent = message;
+      tr.append(td);
+      body.append(tr);
+    };
+    const rowOf = (body, cells) => {
+      const tr = document.createElement('tr');
+      for (const [value, cls] of cells) {
+        const td = document.createElement('td');
+        if (cls) td.className = cls;
+        td.textContent = value;
+        tr.append(td);
+      }
+      body.append(tr);
+    };
+
+    const host = document.getElementById('ops-cards');
+    try {
+      const res = await fetch('/api/admin/operations');
+      if (!res.ok) throw new Error('Operations unavailable (' + res.status + ')');
+      const ops = await res.json();
+
+      const errors24 = (ops.errorKinds || []).reduce((sum, k) => sum + (k.n || 0), 0);
+      const withBoards = (ops.accounts || []).filter((a) => a.boards > 0).length;
+      const openFeedback = (ops.feedback || []).filter((f) => f.status === 'new').length;
+      const worst = (ops.errorKinds || [])[0];
+
+      host.textContent = '';
+      host.append(
+        card('Accounts', fmt((ops.accounts || []).length), withBoards + ' have built a board'),
+        card('Failures, 24h', fmt(errors24),
+          worst ? 'Most common: ' + worst.kind : 'Nothing has failed',
+          errors24 > 0 ? 'var(--spend)' : 'var(--free)'),
+        card('Feedback', fmt((ops.feedback || []).length),
+          openFeedback + ' not yet triaged',
+          openFeedback > 0 ? 'var(--spend)' : undefined),
+        card('Forwarding', ops.feedbackForwarding ? 'Notion' : 'Off',
+          ops.feedbackForwarding ? 'Copied to Notion as well as stored here' : 'Stored here only — set NOTION_API_KEY and NOTION_DATABASE_ID',
+          ops.feedbackForwarding ? 'var(--free)' : 'var(--inert)')
+      );
+
+      const accounts = document.querySelector('#accounts-table tbody');
+      accounts.textContent = '';
+      if (!(ops.accounts || []).length) fill('#accounts-table', 7, 'No accounts yet.');
+      for (const a of ops.accounts || []) {
+        rowOf(accounts, [
+          [a.email || '—', 'name'],
+          [fmt(a.boards), 'num'],
+          [fmt(a.jobs), 'num'],
+          [fmt(a.applied), 'num'],
+          [fmt(a.calls), 'num'],
+          [fmt(a.errors), 'num'],
+          [ago(a.last_login_at || a.created_at), 'num'],
+        ]);
+      }
+
+      const errors = document.querySelector('#errors-table tbody');
+      errors.textContent = '';
+      if (!(ops.errors || []).length) fill('#errors-table', 4, 'Nothing has failed.');
+      for (const e of ops.errors || []) {
+        rowOf(errors, [
+          [ago(e.created_at), 'num'],
+          [e.kind, 'name'],
+          [e.email || '—', ''],
+          [[e.message, e.context].filter(Boolean).join(' — '), ''],
+        ]);
+      }
+
+      const feedback = document.querySelector('#feedback-table tbody');
+      feedback.textContent = '';
+      if (!(ops.feedback || []).length) fill('#feedback-table', 4, 'Nobody has reported anything yet.');
+      for (const f of ops.feedback || []) {
+        rowOf(feedback, [
+          [ago(f.created_at), 'num'],
+          [f.kind === 'bug' ? 'bug' : 'idea', 'name'],
+          [f.email || '—', ''],
+          [[f.subject, f.body].filter(Boolean).join(' — ').slice(0, 240) + (f.forward_error ? '  [not forwarded: ' + f.forward_error + ']' : ''), ''],
+        ]);
+      }
+    } catch (err) {
+      host.textContent = '';
+      const el = document.createElement('div');
+      el.className = 'card';
+      const h = document.createElement('h3');
+      h.textContent = 'Could not load operations';
+      const p = document.createElement('p');
+      p.textContent = err.message;
+      el.append(h, p);
+      host.append(el);
+      fill('#accounts-table', 7, 'Unavailable — ' + err.message);
+      fill('#errors-table', 4, 'Unavailable — ' + err.message);
+      fill('#feedback-table', 4, 'Unavailable — ' + err.message);
+    }
+  })();

@@ -17,6 +17,7 @@
 // path that reaches the Worker without passing through Access.
 
 import { queryOne } from './db.js';
+import { recentErrors, errorSummary, accountActivity, listFeedback, notionConfigured } from './ops.js';
 import { estimateCost } from './budget.js';
 
 /** Verified JWKS, cached per team domain for the process lifetime of the
@@ -146,6 +147,31 @@ export async function adminGate(env, request, ctx) {
   }
 
   return { ok: true, viaAccess: accessConfigured(env) };
+}
+
+/**
+ * Everything the operations view needs: who is using the service, what is
+ * failing for them, and what they have asked for.
+ *
+ * Separate from adminStats because it carries addresses and free text, which
+ * the counts deliberately do not - keeping them apart makes it obvious which
+ * call returns what.
+ */
+export async function adminOperations(env) {
+  const [errors, errorKinds, accounts, feedback] = await Promise.all([
+    recentErrors(env, { limit: 40 }).catch(() => []),
+    errorSummary(env, { hours: 24 }).catch(() => []),
+    accountActivity(env, { limit: 50 }).catch(() => []),
+    listFeedback(env, { limit: 50 }).catch(() => []),
+  ]);
+
+  return {
+    errors,
+    errorKinds,
+    accounts,
+    feedback,
+    feedbackForwarding: notionConfigured(env),
+  };
 }
 
 /**

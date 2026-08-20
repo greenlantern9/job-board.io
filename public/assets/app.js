@@ -2902,6 +2902,69 @@ function wireApp() {
 
 // --- boot ------------------------------------------------------------------
 
+
+/**
+ * Report a bug or ask for something.
+ *
+ * Deliberately two fields and a choice. A form that asks for steps to
+ * reproduce, a browser version and a severity gets fewer reports and worse
+ * ones; whoever reads them can ask a follow-up question.
+ */
+async function openFeedback() {
+  const body = h('div', {});
+  showModal('Send feedback', body);
+
+  const kind = h(
+    'select',
+    { class: 'input' },
+    h('option', { value: 'bug', text: 'Something is broken' }),
+    h('option', { value: 'idea', text: 'I would like something' })
+  );
+  const subject = h('input', { class: 'input', placeholder: 'One line, if you can' });
+  const detail = h('textarea', {
+    class: 'input',
+    rows: '6',
+    placeholder: 'What happened, or what you were hoping for.',
+  });
+  const send = h('button', { class: 'btn btn--primary', text: 'Send' });
+  const note = h('p', { class: 'hint', text: 'Goes straight to the person building this.' });
+
+  body.append(
+    fieldRow('Type', kind),
+    fieldRow('Subject', subject),
+    fieldRow('Detail', detail),
+    h('div', { style: 'display:flex;gap:.5rem;align-items:center;margin-top:1rem' }, send, note)
+  );
+
+  send.addEventListener(
+    'click',
+    busy(send, 'Sending…', async () => {
+      const text = detail.value.trim();
+      if (text.length < 4) {
+        toast('Tell us a little more than that', 'error');
+        return;
+      }
+      const res = await api('/api/feedback', {
+        method: 'POST',
+        body: {
+          kind: kind.value,
+          subject: subject.value.trim(),
+          body: text,
+          // Which board they were looking at, so a report about "the board" can
+          // be tied to one.
+          page: state.boardId ? 'board:' + state.boardId : 'app',
+        },
+      });
+      if (!res.ok) {
+        toast(res.message || 'Could not send that', 'error');
+        return;
+      }
+      closeModal();
+      toast('Thank you — that has been logged');
+    })
+  );
+}
+
 /** A destination in the sidebar, distinct from a board. */
 function navButton(label, onclick) {
   return h('button', { class: 'nav-item', type: 'button', onclick }, h('span', { text: label }));
@@ -2919,7 +2982,8 @@ async function boot() {
     navButton('Applications', openApplications),
     navButton('Insights', openInsights),
     navButton('Alerts', openAlerts),
-    navButton('Profile', openProfile)
+    navButton('Profile', openProfile),
+    navButton('Send feedback', openFeedback)
   );
 
   const params = new URLSearchParams(location.search);

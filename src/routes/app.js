@@ -18,6 +18,7 @@ import {
   MAX_ACTIVE_JOBS,
 } from '../ingest.js';
 import { suggestCompanies } from '../suggest.js';
+import { saveFeedback, forwardToNotion, notionConfigured } from '../ops.js';
 import { curateBoard } from '../curate.js';
 import { applyIntent } from '../intent.js';
 import { inferCategory, isCategory } from '../categories.js';
@@ -245,6 +246,41 @@ async function addJobs(request, env, ctx) {
   );
 
   return json({ ok: true, started: true, activeBefore, max: MAX_ACTIVE_JOBS });
+}
+
+/**
+ * Take a bug report or an idea.
+ *
+ * Stored here first and forwarded afterwards. Somebody took the trouble to
+ * write it, so whether it is kept must not depend on a third party being
+ * reachable - the forward is a copy, and its failure is recorded against the
+ * row rather than returned to the person who wrote it.
+ */
+async function submitFeedback(request, env, ctx) {
+  const body = await readJson(request);
+  const text = String(body.body || '').trim();
+  if (text.length < 4) return badRequest('Tell us a little more than that.');
+  if (!(await allowRate(env.API_RATE_LIMIT, `feedback:${ctx.user.id}`))) {
+    return tooMany('Give it a minute between reports.');
+  }
+
+  const id = await saveFeedback(env, {
+    userId: ctx.user.id,
+    kind: body.kind === 'bug' ? 'bug' : 'idea',
+    subject: body.subject,
+    body: text,
+    page: body.page,
+  });
+
+  if (notionConfigured(env)) {
+    ctx.waitUntil(
+      forwardToNotion(env, id).catch((err) =>
+        console.error('notion forward failed', String((err && err.message) || err))
+      )
+    );
+  }
+
+  return json({ ok: true, forwarding: notionConfigured(env) });
 }
 
 // --- insights --------------------------------------------------------------
@@ -1107,6 +1143,7 @@ export const APP_ROUTES = {
   'POST /api/sources/delete': { handler: deleteSource, admin: true },
   'POST /api/sources/test': { handler: testSource, admin: true },
   'POST /api/sources/suggest': { handler: suggestSources, admin: true },
+  'POST /api/feedback': { handler: submitFeedback },
   'POST /api/account/ai-check': { handler: aiCheck },
 
   'GET /api/jobs': { handler: listJobs },

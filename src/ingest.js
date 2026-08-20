@@ -4,6 +4,7 @@
 import { fetchSource, hydrateDescriptions, matchesFilters, normalizeCompany, safeExternalUrl, ATS_KINDS } from './sources.js';
 import { boardQuery } from './curate.js';
 import { jobAgeDays, heuristicScore } from './rank.js';
+import { recordError } from './ops.js';
 import { activeProfile } from './profile.js';
 import { checkLinks, LINK_DEAD, LINK_LIVE } from './verify.js';
 
@@ -329,6 +330,15 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
       // nothing had recorded that it was unreadable. One employer's listing
       // takes 28 seconds to return three and a half megabytes of titles; it is
       // not worth a wave of the fetch queue on anybody's board.
+      if (!error.transient && !error.unconfigured) {
+        await recordError(env, {
+          userId: board.user_id,
+          kind: 'source-failed',
+          message: String(error.message || error),
+          context: `${source.kind}:${source.identifier} on "${board.name || board.id}"`,
+        });
+      }
+
       if (ATS_KINDS.includes(source.kind)) {
         // Slow and gone are different things, and they were sharing a counter.
         // Three slow reads retired an employer from every board on the service,
