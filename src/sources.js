@@ -9,13 +9,16 @@ import { detectSeniorityLevel } from './rank.js';
 import { expandPhrase } from './synonyms.js';
 import { categoryFor } from './categories.js';
 
-const FETCH_TIMEOUT_MS = 15000;
+const FETCH_TIMEOUT_MS = 8000;
 
-/** A second, shorter attempt after a timeout. Boards were being dropped for a
- *  single slow response while twenty other fetches were in flight against the
- *  same host, which is a stall rather than a failure. Kept short so one bad
- *  source cannot hold up a refresh somebody is waiting on. */
-const RETRY_TIMEOUT_MS = 8000;
+/** A second, shorter attempt after a timeout: a stall while twenty other
+ *  fetches are in flight against the same host is not a dead source.
+ *
+ *  Both budgets were cut when company boards stopped being downloaded with
+ *  every posting's full text. A list of titles is a fraction of the bytes and
+ *  arrives in well under a second, so fifteen seconds was no longer patience,
+ *  it was one stuck source holding a refresh open for twenty-three. */
+const RETRY_TIMEOUT_MS = 4000;
 const MAX_DESCRIPTION_CHARS = 4000;
 const USER_AGENT = 'job-boards.io/1.0 (+https://job-boards.io)';
 
@@ -309,10 +312,25 @@ export function safeExternalUrl(raw, { selfHost } = {}) {
 
 // --- connectors ------------------------------------------------------------
 
+/**
+ * Titles first; descriptions only for the handful that survive.
+ *
+ * Asking for content returns the full HTML of every opening an employer has.
+ * Measured: one defence contractor's board is 37.9MB with content and 2.3MB
+ * without, and a board reads twenty of these. That download was the whole cost
+ * of building a board - fetching took 8.2 seconds of an 8.5 second refresh
+ * while ranking everything it returned took 290ms.
+ *
+ * Nothing is lost by deferring it. A posting whose only claim to the search is
+ * in its body is capped below the admission floor and cannot be admitted
+ * anyway, so the descriptions that matter are the ones on postings already
+ * winning on their titles - and those are fetched individually, at about 10KB
+ * each, by hydrateDescriptions.
+ */
 async function fetchGreenhouse(slug) {
   const board = validateSlug(slug);
   const data = await fetchJson(
-    `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs?content=true`
+    `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs`
   );
   const jobs = Array.isArray(data && data.jobs) ? data.jobs : [];
   return jobs.map((job) => {
@@ -321,6 +339,8 @@ async function fetchGreenhouse(slug) {
     const salary = parseSalary(description);
     return {
       direct: true,
+      // Where to find this posting's description, if it earns one.
+      hydrate: { kind: 'greenhouse', board, id: job.id },
       externalId: `greenhouse:${board}:${job.id}`,
       title: String(job.title || 'Untitled role').trim(),
       company: board,
@@ -1163,6 +1183,48 @@ export function companyMatches(company, list) {
  * Applies a board's filters to a normalized job. Filters run before scoring so
  * the model is never asked about roles the user has already ruled out.
  */
+/**
+ * Fill in descriptions for postings that are still in contention.
+ *
+ * Bounded concurrency and a bounded list: this runs on the shortlist, not on
+ * everything fetched, which is the entire point of deferring it. Failures are
+ * silent by design - a posting with no description ranks on its title, which is
+ * how it got here.
+ */
+export async function hydrateDescriptions(jobs, { concurrency = 12 } = {}) {
+  const pending = jobs.filter((job) => job && job.hydrate && !job.description);
+  if (pending.length === 0) return 0;
+
+  let cursor = 0;
+  let filled = 0;
+  const worker = async () => {
+    while (cursor < pending.length) {
+      const job = pending[cursor++];
+      try {
+        const { board, id } = job.hydrate;
+        const data = await fetchJson(
+          `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs/${encodeURIComponent(id)}?content=true`
+        );
+        const description = htmlToText(data && data.content);
+        if (description) {
+          job.description = description;
+          const salary = parseSalary(description);
+          if (salary.min || salary.max) {
+            job.salaryMin = salary.min;
+            job.salaryMax = salary.max;
+            job.salaryRaw = salary.raw;
+          }
+          filled += 1;
+        }
+      } catch {
+        // Ranks on its title, as it already was.
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, pending.length) }, worker));
+  return filled;
+}
+
 export function matchesFilters(job, filters = {}) {
   const haystack = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
 

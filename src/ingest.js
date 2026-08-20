@@ -1,7 +1,7 @@
 // Board refresh: pull every enabled source, filter, persist what is new, and
 // score it.
 
-import { fetchSource, matchesFilters, normalizeCompany, safeExternalUrl, ATS_KINDS } from './sources.js';
+import { fetchSource, hydrateDescriptions, matchesFilters, normalizeCompany, safeExternalUrl, ATS_KINDS } from './sources.js';
 import { boardQuery } from './curate.js';
 import { heuristicScore } from './rank.js';
 import { activeProfile } from './profile.js';
@@ -64,6 +64,19 @@ export const MAX_ACTIVE_JOBS = 50;
  * themselves.
  */
 export const ADMIT_SCORE_FLOOR = 60;
+
+/**
+ * How many postings are given a description before admission is decided.
+ *
+ * Company boards are now read without descriptions, because downloading every
+ * opening's full text was the entire cost of building a board. The shortlist
+ * gets them individually instead, at about 10KB each.
+ *
+ * Comfortably more than the ten slots: descriptions change the ranking, so the
+ * shortlist has to be wide enough that the eventual top ten is drawn from
+ * postings that were all judged on the same evidence.
+ */
+export const HYDRATE_LIMIT = 40;
 
 /**
  * How many active jobs one employer may hold on a board.
@@ -288,10 +301,23 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
   // matters for debugging is kept on the source row either way.
   let transientFailures = 0;
 
+  const catalogueFailures = [];
+
   for (const { source, jobs, error } of fetched) {
     if (error) {
       summary.sourcesFailed++;
       if (error.transient) transientFailures++;
+      // Tell the shared catalogue, not just this board.
+      //
+      // Pruning happens during curation, which revisits a board weekly, so a
+      // board that cannot be read in time went on costing every refresh for
+      // days - and every new board in that field picked it up again, because
+      // nothing had recorded that it was unreadable. One employer's listing
+      // takes 28 seconds to return three and a half megabytes of titles; it is
+      // not worth a wave of the fetch queue on anybody's board.
+      if (error.transient && ATS_KINDS.includes(source.kind)) {
+        catalogueFailures.push({ kind: source.kind, identifier: source.identifier });
+      }
       await run(
         env,
         `UPDATE sources SET last_status = 'error', last_error = ?, last_fetched = ? WHERE id = ?`,
@@ -378,6 +404,17 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
   // available then, so today's near-miss can win tomorrow if nothing better
   // turns up. A few extra are carried through link checking so that a dead one
   // does not cost a slot.
+  if (catalogueFailures.length > 0) {
+    await env.DB.batch(
+      catalogueFailures.map((entry) =>
+        env.DB.prepare(
+          `UPDATE company_directory SET failed_streak = failed_streak + 1
+           WHERE kind = ? AND identifier = ?`
+        ).bind(entry.kind, entry.identifier)
+      )
+    );
+  }
+
   if (transientFailures > 0) {
     summary.warnings.push(
       transientFailures === 1
@@ -419,8 +456,25 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
       })
       .sort((a, b) => b.score - a.score);
 
-    const relevant = ranked.filter(({ score }) => score >= ADMIT_SCORE_FLOOR);
-    summary.belowBar = ranked.length - relevant.length;
+    // Descriptions arrive here, for the shortlist only.
+    //
+    // Ranking above ran on titles, which is what decides the shortlist. The
+    // text then settles the order within it, and can still disqualify a posting
+    // outright - an exclusion term the user set may only appear in the body,
+    // and it has to be honoured wherever it appears.
+    const shortlist = ranked.slice(0, HYDRATE_LIMIT);
+    summary.hydrated = await hydrateDescriptions(shortlist.map(({ entry }) => entry.job));
+
+    const rescored = shortlist
+      .filter(({ entry }) => matchesFilters(entry.job, activeFilters))
+      .map(({ entry }) => {
+        const scored = heuristicScore(entry.job, { prompt: board.prompt, filters: activeFilters });
+        return { entry, score: scored.score, reason: scored.reason };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const relevant = rescored.filter(({ score }) => score >= ADMIT_SCORE_FLOOR);
+    summary.belowBar = rescored.length - relevant.length;
     summary.passedOver = Math.max(0, relevant.length - slots);
 
     // Overshoot deliberately: link checking drops some, and trimming to exactly
