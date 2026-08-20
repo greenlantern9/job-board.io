@@ -417,14 +417,9 @@ async function enterApp(user) {
   // Hiding the button is presentation only - the endpoints behind it are gated
   // on the server, which is what actually restricts them.
   if (user.isAdmin && !$('#sources-btn')) {
-    $('.sidebar__section').append(
-      h('button', {
-        id: 'sources-btn',
-        class: 'btn btn--ghost btn--sm btn--block',
-        text: 'Sources',
-        onclick: openSources,
-      })
-    );
+    const button = navButton('Sources', openSources);
+    button.id = 'sources-btn';
+    $('#app-nav').append(button);
   }
 
   if (!user.emailVerified) {
@@ -2890,16 +2885,24 @@ function wireApp() {
 
 // --- boot ------------------------------------------------------------------
 
+/** A destination in the sidebar, distinct from a board. */
+function navButton(label, onclick) {
+  return h('button', { class: 'nav-item', type: 'button', onclick }, h('span', { text: label }));
+}
+
 async function boot() {
   wireAuth();
   wireApp();
 
-  // Add the alerts entry point once the app chrome exists.
-  $('.sidebar__section').append(
-    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Profile', onclick: openProfile }),
-    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Applications', onclick: openApplications }),
-    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Insights', onclick: openInsights }),
-    h('button', { class: 'btn btn--ghost btn--sm btn--block', text: 'Alerts', onclick: openAlerts })
+  // These were appended into the Boards section, directly beneath the list of
+  // boards and styled like the button that creates one - so four destinations
+  // read as though they might be boards themselves. They now have their own
+  // labelled section.
+  $('#app-nav').append(
+    navButton('Applications', openApplications),
+    navButton('Insights', openInsights),
+    navButton('Alerts', openAlerts),
+    navButton('Profile', openProfile)
   );
 
   const params = new URLSearchParams(location.search);
