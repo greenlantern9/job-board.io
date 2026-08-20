@@ -18,7 +18,7 @@ import {
   canonicalUrl,
   SESSION_COOKIE,
 } from './src/http.js';
-import { ensureSchema, run, queryOne, queryAll, nowIso } from './src/db.js';
+import { ensureSchema, run, nowIso } from './src/db.js';
 import { loadSession, findUserById, purgeExpired } from './src/auth.js';
 import { AUTH_ROUTES, verifyEmailToken } from './src/routes/auth.js';
 import { APP_ROUTES } from './src/routes/app.js';
@@ -256,8 +256,6 @@ async function handleRequest(request, env, executionCtx) {
         twoFactor: Boolean(env.TOTP_ENC_KEY),
         email: Boolean(env.RESEND_API_KEY),
       },
-      catalogue: await catalogueHealth(env),
-      lastCron: await lastCronAt(env),
       time: nowIso(),
     });
   }
@@ -304,54 +302,6 @@ async function handleRequest(request, env, executionCtx) {
     );
   }
   return asset;
-}
-
-/** When the cron last completed a tick. */
-async function lastCronAt(env) {
-  try {
-    const row = await queryOne(
-      env,
-      "SELECT attempted_at FROM discovery_attempts WHERE category = '__cron'"
-    );
-    return (row && row.attempted_at) || 'never';
-  } catch {
-    return 'unknown';
-  }
-}
-
-/** Whether the shared catalogue is in a state that can serve a board. */
-async function catalogueHealth(env) {
-  try {
-    const row = await queryOne(
-      env,
-      `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN category <> '' THEN 1 ELSE 0 END) AS classified,
-              SUM(CASE WHEN title_terms <> '' THEN 1 ELSE 0 END) AS withVocabulary,
-              SUM(CASE WHEN job_count > 0 THEN 1 ELSE 0 END) AS counted,
-              SUM(CASE WHEN failed_streak >= 3 THEN 1 ELSE 0 END) AS retired
-       FROM company_directory`
-    );
-    // Which of the largest employers have been dropped. Retirement removes a
-    // board from every search, so if the biggest listings are being retired the
-    // corpus quietly shrinks to whatever is left.
-    const biggest = await queryAll(
-      env,
-      `SELECT identifier, job_count, failed_streak FROM company_directory
-       ORDER BY job_count DESC LIMIT 12`
-    );
-
-    return {
-      total: (row && row.total) || 0,
-      classified: (row && row.classified) || 0,
-      withVocabulary: (row && row.withVocabulary) || 0,
-      counted: (row && row.counted) || 0,
-      retired: (row && row.retired) || 0,
-      biggest: biggest.map((b) => `${b.identifier}:${b.job_count}${b.failed_streak >= 3 ? ' RETIRED' : b.failed_streak ? ' strike' + b.failed_streak : ''}`),
-    };
-  } catch (err) {
-    // The message matters here: a missing column means a migration did not run.
-    return { error: String((err && err.message) || err).slice(0, 160) };
-  }
 }
 
 async function runCron(env) {

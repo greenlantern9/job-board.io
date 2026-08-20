@@ -291,6 +291,29 @@
         <tbody><tr><td colspan="4">Loading…</td></tr></tbody>
       </table>
     </div>
+
+    <h3 style="margin-top:2rem">Catalogue readiness</h3>
+    <p>Whether the catalogue is in a state to serve a board, and when the
+      background pass last ran. A board draws on employers that are classified,
+      counted and not retired; anything short of that quietly narrows what a
+      search can reach.</p>
+    <div class="cards" id="readiness-cards">
+      <div class="card"><h3>Loading…</h3></div>
+    </div>
+
+    <h3 style="margin-top:2rem">Largest sources</h3>
+    <p>The employers carrying the most openings. Retirement removes one from
+      every search, so a large source dropping out is worth noticing — slow is
+      recorded separately from gone, because the biggest listings take the
+      longest to read and were being retired for it.</p>
+    <div class="scroll">
+      <table id="biggest-table">
+        <thead>
+          <tr><th>Employer</th><th>Openings</th><th>State</th></tr>
+        </thead>
+        <tbody><tr><td colspan="3">Loading…</td></tr></tbody>
+      </table>
+    </div>
   </section>
 
   <section>
@@ -765,6 +788,57 @@
             : fmt(ready) + ' ready · every board classified',
           cat.unclassified > 0 ? 'var(--spend)' : 'var(--free)')
       );
+
+      const readiness = cat.readiness || {};
+      const rcards = document.getElementById('readiness-cards');
+      if (rcards) {
+        const pct = (n) => (readiness.total ? Math.round((n / readiness.total) * 100) + '%' : '—');
+        rcards.textContent = '';
+        rcards.append(
+          card('Employers catalogued', fmt(readiness.total), 'Company boards known to the service'),
+          card('Classified', fmt(readiness.classified),
+            pct(readiness.classified) + ' — the rest reach nobody until they have a field',
+            readiness.classified < readiness.total ? 'var(--spend)' : 'var(--free)'),
+          card('With a vocabulary', fmt(readiness.withVocabulary),
+            pct(readiness.withVocabulary) + ' — needed to match a search to an employer',
+            readiness.withVocabulary < readiness.total ? 'var(--spend)' : 'var(--free)'),
+          card('Retired', fmt(readiness.retired),
+            fmt(readiness.slow) + ' more are slow but still offered',
+            readiness.retired > 0 ? 'var(--inert)' : 'var(--free)'),
+          card('Last background pass', !cat.lastCron || cat.lastCron === 'never' ? 'Never' : new Date(cat.lastCron).toLocaleString(),
+            cat.lastCron === 'never' ? 'The cron has not completed a tick' : 'Loads, classifies, then discovers',
+            cat.lastCron === 'never' ? 'var(--inert)' : undefined)
+        );
+      }
+
+      const bigBody = document.querySelector('#biggest-table tbody');
+      if (bigBody) {
+        bigBody.textContent = '';
+        for (const row of cat.biggest || []) {
+          const tr = document.createElement('tr');
+          const name = document.createElement('td');
+          name.className = 'name';
+          name.textContent = row.identifier;
+          const n = document.createElement('td');
+          n.className = 'num';
+          n.textContent = fmt(row.job_count);
+          const state = document.createElement('td');
+          const tag = document.createElement('span');
+          if (row.failed_streak >= 3) {
+            tag.className = 'tag tag--inert';
+            tag.textContent = 'retired';
+          } else if (row.timeout_streak > 0) {
+            tag.className = 'tag tag--spend';
+            tag.textContent = 'slow · offered last';
+          } else {
+            tag.className = 'tag tag--free';
+            tag.textContent = 'in use';
+          }
+          state.append(tag);
+          tr.append(name, n, state);
+          bigBody.append(tr);
+        }
+      }
 
       const catBody = document.querySelector('#catalogue-table tbody');
       catBody.textContent = '';

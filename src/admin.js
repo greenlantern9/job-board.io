@@ -219,6 +219,29 @@ export async function adminStats(env) {
      WHERE category <> '' GROUP BY category ORDER BY n DESC`
   );
 
+  // Readiness of the shared catalogue, and the largest sources in it.
+  //
+  // Owner-only, deliberately. This says how the corpus is built and which
+  // employers carry it, which is not something a visitor needs and not
+  // something to hand out from a public endpoint.
+  const readiness = await one(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN category <> '' THEN 1 ELSE 0 END) AS classified,
+            SUM(CASE WHEN title_terms <> '' THEN 1 ELSE 0 END) AS with_vocabulary,
+            SUM(CASE WHEN job_count > 0 THEN 1 ELSE 0 END) AS counted,
+            SUM(CASE WHEN failed_streak >= 3 THEN 1 ELSE 0 END) AS retired,
+            SUM(CASE WHEN timeout_streak > 0 THEN 1 ELSE 0 END) AS slow
+     FROM company_directory`
+  );
+  const biggest = await queryAllSafe(
+    env,
+    `SELECT identifier, job_count, failed_streak, timeout_streak
+     FROM company_directory ORDER BY job_count DESC LIMIT 12`
+  );
+  const heartbeat = await one(
+    "SELECT attempted_at FROM discovery_attempts WHERE category = '__cron'"
+  );
+
   return {
     users: {
       total: users.total || 0,
@@ -265,6 +288,16 @@ export async function adminStats(env) {
     catalogue: {
       byPlatform: catalogue,
       byField: catalogueFields,
+      readiness: {
+        total: readiness.total || 0,
+        classified: readiness.classified || 0,
+        withVocabulary: readiness.with_vocabulary || 0,
+        counted: readiness.counted || 0,
+        retired: readiness.retired || 0,
+        slow: readiness.slow || 0,
+      },
+      biggest,
+      lastCron: (heartbeat && heartbeat.attempted_at) || 'never',
       total: catalogue.reduce((sum, row) => sum + (row.n || 0), 0),
       unclassified: catalogue.reduce((sum, row) => sum + (row.unclassified || 0), 0),
     },
