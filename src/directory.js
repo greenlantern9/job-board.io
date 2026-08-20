@@ -149,14 +149,22 @@ export async function directoryFor(env, category, { limit = 20, exclude = [], te
         const hits = wanted.filter((term) => vocabulary.has(term)).length;
         return { row, hits };
       })
-      .sort((a, b) => (b.hits - a.hits) || (b.row.job_count - a.row.job_count))
+      // Relevance, then reliability, then size. A board that keeps timing out
+      // is offered last rather than not at all - it is slow, not gone, and
+      // excluding it was removing the largest employers from every search.
+      .sort(
+        (a, b) =>
+          b.hits - a.hits ||
+          (a.row.timeout_streak || 0) - (b.row.timeout_streak || 0) ||
+          b.row.job_count - a.row.job_count
+      )
       .map(({ row }) => row);
   };
 
   const own = rank(
     await queryAll(
       env,
-      `SELECT kind, identifier, name, job_count, title_terms FROM company_directory
+      `SELECT kind, identifier, name, job_count, title_terms, timeout_streak FROM company_directory
        WHERE category = ? AND failed_streak < ?
        ORDER BY job_count DESC, verified_at DESC
        LIMIT ?`,
@@ -172,7 +180,7 @@ export async function directoryFor(env, category, { limit = 20, exclude = [], te
   const largest = rank(
     await queryAll(
       env,
-      `SELECT kind, identifier, name, job_count, title_terms FROM company_directory
+      `SELECT kind, identifier, name, job_count, title_terms, timeout_streak FROM company_directory
        WHERE category <> '' AND failed_streak < ?
        ORDER BY job_count DESC, verified_at DESC
        LIMIT ?`,
@@ -679,7 +687,7 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
     writes.push(
       env.DB.prepare(
         `UPDATE company_directory
-         SET category = ?, job_count = ?, title_terms = ?, verified_at = ?, failed_streak = 0
+         SET category = ?, job_count = ?, title_terms = ?, verified_at = ?, failed_streak = 0, timeout_streak = 0
          WHERE kind = ? AND identifier = ?`
       ).bind(
         result.category,

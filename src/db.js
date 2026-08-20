@@ -183,6 +183,7 @@ const STATEMENTS = [
     category TEXT NOT NULL DEFAULT 'other',
     title_terms TEXT NOT NULL DEFAULT '',
     job_count INTEGER NOT NULL DEFAULT 0,
+    timeout_streak INTEGER NOT NULL DEFAULT 0,
     verified_at TEXT NOT NULL DEFAULT '',
     failed_streak INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
@@ -257,6 +258,13 @@ const STATEMENTS = [
  * error is the expected outcome on every deploy after the first.
  */
 const MIGRATIONS = [
+  // Slowness, counted separately from failure.
+  //
+  // A board that times out is not a board that has gone away, and the two were
+  // sharing a column. Timeouts retired the four largest employers in the
+  // catalogue - the biggest listings take the longest to read, so the richest
+  // sources were the first to be deleted from every search.
+  `ALTER TABLE company_directory ADD COLUMN timeout_streak INTEGER NOT NULL DEFAULT 0`,
   // The role words an employer's board actually contains.
   //
   // Employers were connected by field and by size, neither of which says
@@ -334,8 +342,38 @@ export async function ensureSchema(env) {
   }
 
   await grantAdmin(env);
+  await repairTimeoutRetirements(env);
 
   schemaReady = true;
+}
+
+/**
+ * Undo retirements caused by slowness rather than by failure.
+ *
+ * Runs once, recorded by a marker row. Boards that have ever returned jobs are
+ * not dead; they were dropped because reading them took longer than a refresh
+ * was willing to wait, which says something about their size and nothing about
+ * whether they exist.
+ */
+async function repairTimeoutRetirements(env) {
+  try {
+    const done = await queryOne(
+      env,
+      "SELECT category FROM discovery_attempts WHERE category = '__unretired_v1'"
+    );
+    if (done) return;
+
+    await env.DB.prepare(
+      'UPDATE company_directory SET failed_streak = 0 WHERE failed_streak >= 3 AND job_count > 0'
+    ).run();
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO discovery_attempts (category, attempted_at, found) VALUES ('__unretired_v1', ?, 0)"
+    )
+      .bind(nowIso())
+      .run();
+  } catch (err) {
+    console.error('unretire failed', String((err && err.message) || err));
+  }
 }
 
 /**

@@ -329,8 +329,15 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
       // nothing had recorded that it was unreadable. One employer's listing
       // takes 28 seconds to return three and a half megabytes of titles; it is
       // not worth a wave of the fetch queue on anybody's board.
-      if (error.transient && ATS_KINDS.includes(source.kind)) {
-        catalogueFailures.push({ kind: source.kind, identifier: source.identifier });
+      if (ATS_KINDS.includes(source.kind)) {
+        // Slow and gone are different things, and they were sharing a counter.
+        // Three slow reads retired an employer from every board on the service,
+        // which is how the four largest listings in the catalogue disappeared.
+        catalogueFailures.push({
+          kind: source.kind,
+          identifier: source.identifier,
+          transient: Boolean(error.transient),
+        });
       }
       await run(
         env,
@@ -422,8 +429,11 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     await env.DB.batch(
       catalogueFailures.map((entry) =>
         env.DB.prepare(
-          `UPDATE company_directory SET failed_streak = failed_streak + 1
-           WHERE kind = ? AND identifier = ?`
+          entry.transient
+            ? `UPDATE company_directory SET timeout_streak = timeout_streak + 1
+               WHERE kind = ? AND identifier = ?`
+            : `UPDATE company_directory SET failed_streak = failed_streak + 1
+               WHERE kind = ? AND identifier = ?`
         ).bind(entry.kind, entry.identifier)
       )
     );
