@@ -146,7 +146,20 @@ function isTooOld(job) {
  * and gives third parties a burst they did not ask for. Eight collapses the
  * wait without any of that.
  */
-const FETCH_CONCURRENCY = 8;
+/**
+ * How many sources are read at once.
+ *
+ * Measured on a board with 27 sources: fetching took 8.2 seconds of an 8.5
+ * second refresh, while filtering and ranking all 11,753 postings it returned
+ * took 290ms. The work was never the bottleneck - the queue was, at four waves
+ * of eight.
+ *
+ * Not raised to the full source count. Most of a board's sources are Greenhouse
+ * boards, so the waves all land on one host, and the background classifier is
+ * reading that same host on the same tick. Sixteen halves the waves without
+ * turning a refresh into a burst somebody else has to absorb.
+ */
+const FETCH_CONCURRENCY = 16;
 
 /**
  * Read every source concurrently, returning results in the original order.
@@ -260,10 +273,13 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
   // it, so results are walked in the original source order regardless of which
   // network call happened to return first. Same corpus, same winner, same
   // ranking - only the waiting is different.
+  const fetchStarted = Date.now();
   const fetched = await fetchAllSources(sources, {
     selfHost,
     category: activeFilters.category,
   });
+  summary.fetchMs = Date.now() - fetchStarted;
+  const processStarted = Date.now();
 
   // Counted here and reported once, below, rather than one line per source.
   // A refresh reads dozens of them, and a reader handed a list of internal
@@ -369,6 +385,8 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     );
   }
 
+  summary.processMs = Date.now() - processStarted;
+
   const activeBefore = await activeJobCount(env, board.id);
   const slots = Math.max(0, Math.min(batchSize, MAX_ACTIVE_JOBS - activeBefore));
   summary.activeBefore = activeBefore;
@@ -394,10 +412,10 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     // The bar sits just above the out-of-field ceiling, so a posting from the
     // wrong discipline can never be admitted however well it scores otherwise.
     const ranked = toInsert
-      .map((entry) => ({
-        entry,
-        score: heuristicScore(entry.job, { prompt: board.prompt, filters: activeFilters }).score,
-      }))
+      .map((entry) => {
+        const scored = heuristicScore(entry.job, { prompt: board.prompt, filters: activeFilters });
+        return { entry, score: scored.score, reason: scored.reason };
+      })
       .sort((a, b) => b.score - a.score);
 
     const relevant = ranked.filter(({ score }) => score >= ADMIT_SCORE_FLOOR);
@@ -440,6 +458,16 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     summary.employersHeld = new Set(chosen.map((item) => employer(item.entry)).filter(Boolean)).size;
 
     toInsert.length = 0;
+    // The score that decided admission is written with the row.
+    //
+    // The insert used to omit it, leaving every new job at the column default
+    // of zero until a separate pass filled it in. That pass is the expensive
+    // one, so any refresh that ran out of time - or hit its budget, or failed
+    // its model call - left a board of real jobs all showing zero, which reads
+    // as broken scoring rather than as scoring that has not happened yet.
+    for (const { entry, score, reason } of chosen) {
+      entry.heuristic = { score, reason };
+    }
     toInsert.push(...chosen.map(({ entry }) => entry));
   }
 
@@ -507,12 +535,13 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
 
   if (toInsert.length > 0) {
     await env.DB.batch(
-      toInsert.map(({ id, sourceId, job, linkStatus }) =>
+      toInsert.map(({ id, sourceId, job, linkStatus, heuristic }) =>
         env.DB.prepare(
           `INSERT INTO jobs (id, board_id, user_id, source_id, external_id, title, company, location,
              remote, employment, salary_min, salary_max, salary_raw, url, description, posted_at,
-             discovered_at, updated_at, link_direct, link_status, link_checked_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             discovered_at, updated_at, link_direct, link_status, link_checked_at,
+             score, score_reason, scored_by, scored_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (board_id, external_id) DO NOTHING`
         ).bind(
           id,
@@ -535,7 +564,11 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
           now,
           job.direct ? 1 : 0,
           linkStatus || '',
-          linkStatus ? now : ''
+          linkStatus ? now : '',
+          (heuristic && heuristic.score) || 0,
+          (heuristic && heuristic.reason) || '',
+          'heuristic',
+          now
         )
       )
     );

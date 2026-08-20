@@ -209,6 +209,14 @@ const STOPWORDS = new Set([
  * inputs always produce the same number, which matters because this is what
  * the list is sorted by when the model is not in play.
  */
+/**
+ * The highest score a posting can reach when it is not clearly the role asked
+ * for - whether because it is from another field, or because only its body
+ * mentions the role. Deliberately below ingest's admission floor of 60, so a
+ * near-miss can be ranked without ever being admitted.
+ */
+export const WRONG_ROLE_CEILING = 55;
+
 export function heuristicScore(job, { prompt = '', filters = {}, profile = null } = {}) {
   const haystack = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
   const titleText = String(job.title || '').toLowerCase();
@@ -224,6 +232,7 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
   //    every other criteria signal combined, and a job that matches none of the
   //    stated role is pushed below the baseline rather than left at it.
   const { phrases, words: criteriaWords } = criteriaTerms(prompt);
+  let roleInBodyOnly = false;
 
   if (phrases.length > 0) {
     const best = phrases.find((phrase) => phraseMatches(phrase, titleText));
@@ -234,6 +243,7 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
       reasons.unshift(`title matches "${best}"`);
     } else if (inBody) {
       score += 12;
+      roleInBodyOnly = true;
       reasons.push('role appears in the description, not the title');
     } else {
       score -= 20;
@@ -422,8 +432,19 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
   // merely contained "video" sat at 100 alongside actual video editors, because
   // the title matched the phrase and every deduction was absorbed by the clamp.
   // A ceiling guarantees the ordering instead of hoping the arithmetic lands.
-  const capped = clash > 0 ? Math.min(raw, 55) : raw;
+  let capped = clash > 0 ? Math.min(raw, WRONG_ROLE_CEILING) : raw;
   if (clash > 0) reasons.push('different field to what you asked for');
+
+  // The title says what a role is; the body only says what words it contains.
+  //
+  // A civil engineering posting called "Water Resources Designer II" was
+  // admitted to a programme-management board on 74, because its description
+  // genuinely used "technical", "program" and "manager" while describing
+  // something else entirely. Body text is corroboration, never identification,
+  // so on its own it cannot clear the admission floor.
+  if (roleInBodyOnly && clash <= 0) {
+    capped = Math.min(capped, WRONG_ROLE_CEILING);
+  }
 
   return {
     score: capped,

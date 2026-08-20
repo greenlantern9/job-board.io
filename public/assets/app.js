@@ -834,14 +834,27 @@ function renderAddJobs(active) {
         toast(res.message || 'Could not add jobs', 'error');
         return;
       }
-      await loadJobs();
-      await loadBoards();
-      if (res.added > 0) {
-        const passed = res.passedOver ? `, ${res.passedOver} ranked lower` : '';
-        toast(`Added ${res.added}${passed}`);
-      } else {
-        toast('Nothing new cleared your criteria this time');
+
+      // The search now runs after the response, so the count is what tells us
+      // it finished. Reading every source and ranking what they return takes
+      // longer than a request is allowed to sit open.
+      const before = typeof res.activeBefore === 'number' ? res.activeBefore : state.jobs.length;
+      toast('Looking for more jobs…');
+
+      for (let attempt = 0; attempt < 24; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, attempt < 4 ? 1500 : 3000));
+        await loadJobs();
+        if (state.jobs.length > before) {
+          await loadBoards();
+          toast(`Added ${state.jobs.length - before}`);
+          return;
+        }
       }
+
+      // Never silent: a search that found nothing and a search still running
+      // look identical from here, so say which one this is.
+      await loadBoards();
+      toast('Nothing new cleared your criteria this time');
     })
   );
 

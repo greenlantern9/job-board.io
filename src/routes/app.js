@@ -226,13 +226,25 @@ async function addJobs(request, env, ctx) {
     return tooMany('Give it a minute between batches.');
   }
 
-  const summary = await refreshBoard(env, board, { selfHost: new URL(request.url).hostname });
-  return json({
-    ok: true,
-    ...summary,
-    active: await activeJobCount(env, board.id),
-    max: MAX_ACTIVE_JOBS,
-  });
+  // Started, not awaited.
+  //
+  // This used to run the whole refresh inside the request: reading every
+  // connected source, then up to four model calls in sequence. That was
+  // survivable when a board reached a few hundred postings. It is not now that
+  // one reaches twelve thousand - the request ran past what it is allowed and
+  // died partway, having already inserted its jobs, which is why a board could
+  // come back full of rows that had never been scored.
+  //
+  // Board creation has always worked this way and the client already polls for
+  // the result, so this is the same shape rather than a new one.
+  const activeBefore = await activeJobCount(env, board.id);
+  ctx.waitUntil(
+    refreshBoard(env, board, { selfHost: new URL(request.url).hostname }).catch((err) => {
+      console.error('add-jobs refresh failed', board.id, err && err.stack ? err.stack : err);
+    })
+  );
+
+  return json({ ok: true, started: true, activeBefore, max: MAX_ACTIVE_JOBS });
 }
 
 // --- insights --------------------------------------------------------------
