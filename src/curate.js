@@ -19,6 +19,7 @@ import { newId } from './crypto.js';
 import { fetchSource, AGGREGATOR_KINDS, ATS_KINDS } from './sources.js';
 import { extractRolePhrases } from './intent.js';
 import { SEED_COMPANIES, SEED_LIMIT } from './seeds.js';
+import { directoryFor, discoverCompanies, seedDirectory } from './directory.js';
 
 /** Enough breadth to fill a board without spending the whole refresh budget. */
 export const TARGET_SOURCES = 12;
@@ -228,8 +229,35 @@ export async function curateBoard(env, board, { selfHost, force = false } = {}) 
     // free path is not left with aggregators alone.
     const haveCompany = existing.filter((s) => !AGGREGATOR_KINDS.includes(s.kind));
     if (haveCompany.length === 0) {
-      for (const seed of SEED_COMPANIES.slice(0, SEED_LIMIT)) {
-        if (await insertSource(env, board, { ...seed, auto: 1 })) summary.added++;
+      // The shared catalogue first, and it costs nothing: these are boards
+      // somebody has already paid to find and verify, matched to this board's
+      // category. Only when it cannot fill the target does anything spend.
+      await seedDirectory(env, SEED_COMPANIES);
+      const category = (board.filters || {}).category || 'other';
+      const catalogued = await directoryFor(env, category, { limit: SEED_LIMIT });
+
+      for (const company of catalogued) {
+        const inserted = await insertSource(env, board, {
+          kind: company.kind,
+          identifier: company.identifier,
+          label: company.name,
+          auto: 1,
+        });
+        if (inserted) summary.added++;
+      }
+
+      // A category nobody has catalogued yet falls back to the built-ins - but
+      // only where they could plausibly match. Every built-in is a technology
+      // employer, so attaching all twenty to a photography board meant reading
+      // several thousand listings that the field check would reject anyway:
+      // real fetch time and real subrequests spent to admit nothing. Those
+      // boards are better served by the aggregators and by discovery, which
+      // looks for employers in their actual field.
+      const seedsCouldMatch = category === 'software' || category === 'other';
+      if (summary.added === 0 && seedsCouldMatch) {
+        for (const seed of SEED_COMPANIES.slice(0, SEED_LIMIT)) {
+          if (await insertSource(env, board, { ...seed, auto: 1 })) summary.added++;
+        }
       }
       existing = await queryAll(env, 'SELECT * FROM sources WHERE board_id = ?', board.id);
     }
@@ -254,6 +282,28 @@ export async function curateBoard(env, board, { selfHost, force = false } = {}) 
         ...existing.map((s) => s.label || s.identifier),
         ...boardCompanies(board),
       ];
+      // Read the slug off a real careers page rather than guessing it from the
+      // company name. Whatever it verifies is written to the shared catalogue,
+      // so the next board in this category gets it without spending anything.
+      const category = (board.filters || {}).category || 'other';
+      const discovered = await discoverCompanies(env, {
+        userId: board.user_id,
+        category,
+        prompt: board.prompt,
+        selfHost,
+      });
+      for (const company of discovered.added.slice(0, Math.max(shortfall, force ? 4 : 0))) {
+        const inserted = await insertSource(env, board, {
+          kind: company.kind,
+          identifier: company.identifier,
+          label: company.name,
+          auto: 1,
+        });
+        if (inserted) summary.added++;
+      }
+      summary.discovered = discovered.added.length;
+      summary.searches = discovered.searches;
+
       const suggested = await suggestCompanies(env, board, { known, selfHost });
       for (const company of suggested.companies.slice(0, Math.max(shortfall, force ? 4 : 0))) {
         const inserted = await insertSource(env, board, {

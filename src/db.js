@@ -163,6 +163,30 @@ const STATEMENTS = [
     UNIQUE (board_id, website)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_leads_board ON leads(board_id, created_at DESC)`,
+  // Company boards discovered once and shared by everyone.
+  //
+  // No applicant tracking system publishes a directory - Greenhouse has
+  // thousands of customers and no endpoint that lists or searches them, so the
+  // only way in is a slug you already know. Finding one costs web searches;
+  // the slug it yields is then valid forever and identical for every user.
+  //
+  // Caching it globally is what keeps that affordable: discovery is paid for
+  // once, by whoever needed it first, and every later board in the same
+  // category gets it for nothing. The catalogue grows and the marginal cost of
+  // a new board falls toward zero.
+  `CREATE TABLE IF NOT EXISTS company_directory (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    identifier TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'other',
+    job_count INTEGER NOT NULL DEFAULT 0,
+    verified_at TEXT NOT NULL DEFAULT '',
+    failed_streak INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    UNIQUE (kind, identifier)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_directory_category ON company_directory(category, job_count DESC)`,
   // Model calls per account per day. The ceiling is enforced rather than
   // advised, because every other path degrades silently when the model is
   // unavailable - so an overspend would have no symptom until the bill.
