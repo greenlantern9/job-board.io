@@ -457,6 +457,7 @@ async function loadBoards({ keepSelection = true } = {}) {
   localStorage.setItem('jb.board', state.boardId);
 
   renderBoardList();
+  $('#board-settings').hidden = false;
   await loadJobs();
 }
 
@@ -542,6 +543,8 @@ function render() {
 function renderEmptyShell() {
   $('#board-name').textContent = 'No boards yet';
   $('#board-stamp').textContent = '';
+  // Settings configures a board, so it has nothing to act on until one exists.
+  $('#board-settings').hidden = true;
   $('#view-list').hidden = true;
   $('#view-board').hidden = true;
   const empty = clear($('#empty'));
