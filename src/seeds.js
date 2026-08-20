@@ -203,4 +203,4 @@ export const SEED_COMPANIES = [
  * Worker has a per-request subrequest budget to stay inside alongside the
  * aggregators.
  */
-export const SEED_LIMIT = 20;
+export const SEED_LIMIT = 36;

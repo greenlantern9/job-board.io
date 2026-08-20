@@ -462,7 +462,35 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     // text then settles the order within it, and can still disqualify a posting
     // outright - an exclusion term the user set may only appear in the body,
     // and it has to be honoured wherever it appears.
-    const shortlist = ranked.slice(0, HYDRATE_LIMIT);
+    // Taken as a spread across employers, not as the top forty.
+    //
+    // An exact title match scores 100, and a search like "technical program
+    // manager" returns dozens of them. Sorting leaves those ties in fetch
+    // order, so the first employers read filled the shortlist and every other
+    // employer's identical roles never entered it - the employer cap then had
+    // nothing else to choose, and a board that could have drawn on eight
+    // employers showed two. Rounds of one-each keep the shortlist as wide as
+    // the corpus is before quality is judged within it.
+    const byEmployer = new Map();
+    for (const item of ranked) {
+      const key = String(item.entry.job.company || '').trim().toLowerCase();
+      if (!byEmployer.has(key)) byEmployer.set(key, []);
+      byEmployer.get(key).push(item);
+    }
+    const queues = [...byEmployer.values()];
+    const shortlist = [];
+    for (let round = 0; shortlist.length < HYDRATE_LIMIT; round += 1) {
+      let placed = 0;
+      for (const queue of queues) {
+        if (shortlist.length >= HYDRATE_LIMIT) break;
+        if (round < queue.length) {
+          shortlist.push(queue[round]);
+          placed += 1;
+        }
+      }
+      if (placed === 0) break;
+    }
+    shortlist.sort((a, b) => b.score - a.score);
     summary.hydrated = await hydrateDescriptions(shortlist.map(({ entry }) => entry.job));
 
     const rescored = shortlist
@@ -500,7 +528,17 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     // once the board has room, and a board dominated by one employer hides the
     // market rather than showing it.
     if (chosen.length < want) {
-      const ceiling = Math.max(PER_EMPLOYER_LIMIT, Math.ceil(slots * PER_EMPLOYER_CEILING));
+      // Measured against the board it is building, not against one batch.
+      //
+      // Taking half of "slots" meant half of ten however big the board already
+      // was, so an employer that had filled a new board's first batch was at
+      // its ceiling permanently: a later refresh found seven more jobs that
+      // cleared the bar and admitted none of them, and the board stayed at five
+      // for good. Half of what the board will hold once this batch lands keeps
+      // the original guarantee on a new board - five of ten - while letting an
+      // established one keep growing.
+      const capacity = activeBefore + slots;
+      const ceiling = Math.max(PER_EMPLOYER_LIMIT, Math.ceil(capacity * PER_EMPLOYER_CEILING));
       for (const item of relevant) {
         if (chosen.length >= want) break;
         if (taken.has(item)) continue;
