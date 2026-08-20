@@ -92,7 +92,7 @@ async function signup(request, env) {
       actionUrl: `${env.SITE_URL || 'https://job-boards.io'}/app`,
       actionLabel: 'Sign in',
     });
-    return json({ ok: true, pendingVerification: true });
+    return json({ ok: true, pendingVerification: true, emailDelivery: Boolean(env.RESEND_API_KEY) });
   }
 
   const timezone = typeof body.timezone === 'string' ? body.timezone.slice(0, 64) : 'UTC';
@@ -101,7 +101,11 @@ async function signup(request, env) {
 
   const { token, maxAge } = await createSession(env, user, { request, mfaSatisfied: true });
   return json(
-    { ok: true, user: publicUser(user), pendingVerification: true },
+    // Whether a verification email can actually arrive. Saying "check your
+    // inbox" with no provider configured is the same class of untruth as
+    // telling someone their correct password is wrong: it sends them to wait
+    // for something that is never coming.
+    { ok: true, user: publicUser(user), pendingVerification: true, emailDelivery: Boolean(env.RESEND_API_KEY) },
     { headers: { 'Set-Cookie': cookieFor(token, maxAge) } }
   );
 }

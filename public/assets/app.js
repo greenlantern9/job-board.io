@@ -311,13 +311,24 @@ function wireAuth() {
           },
         });
         if (!result.user) {
-          // Address already registered - the server answers identically either
-          // way, so say the neutral thing.
-          authNotice('Check your inbox to continue.', 'ok');
+          // Address already registered. The server answers identically either
+          // way, so the wording stays neutral - but it must not promise an
+          // email that cannot be sent, which left someone watching an inbox
+          // for a message that was never going to arrive.
+          authNotice(
+            result.emailDelivery
+              ? 'Check your inbox to continue.'
+              : 'That address cannot be signed up right now. If the account is yours, sign in instead.',
+            'ok'
+          );
           return;
         }
         await enterApp(result.user);
-        toast('Account created. Check your email to confirm the address.');
+        toast(
+          result.emailDelivery
+            ? 'Account created. Check your email to confirm the address.'
+            : 'Account created. Email confirmation is not set up yet, so nothing to check — everything works except alerts.'
+        );
       } catch (err) {
         authNotice(err.message);
       }
