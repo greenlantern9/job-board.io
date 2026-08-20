@@ -185,16 +185,31 @@ section('sources');
   );
   check('seeded sources are marked as automatic', sources.every((s) => s.auto !== false));
 
-  // Manual add uses a company the seed list does not already cover.
+  // Pick a company the board does not already have, rather than naming one and
+  // hoping. Seeds and the shared catalogue both grow, and the catalogue outlives
+  // any change to the seed list - so a hardcoded example eventually collides
+  // with one of them and the failure looks like a broken endpoint rather than a
+  // stale fixture.
+  const candidates = [
+    { kind: 'smartrecruiters', identifier: 'Visa', label: 'Visa' },
+    { kind: 'greenhouse', identifier: 'benchling', label: 'Benchling' },
+    { kind: 'greenhouse', identifier: 'sentry', label: 'Sentry' },
+    { kind: 'lever', identifier: 'netflix', label: 'Netflix' },
+  ];
+  const present = new Set(sources.map((s) => `${s.kind}:${s.identifier}`.toLowerCase()));
+  const fresh = candidates.find((c) => !present.has(`${c.kind}:${c.identifier}`.toLowerCase()));
+
   const added = await call('/api/sources/create', {
     method: 'POST',
-    body: { boardId, kind: 'smartrecruiters', identifier: 'Visa', label: 'Visa' },
+    body: { boardId, ...fresh },
   });
   check('a source can still be added by hand', added.status === 200, added.payload);
 
+  // The same one again, so the check is genuinely about duplicates rather
+  // than about whichever company happened to be free.
   const dupe = await call('/api/sources/create', {
     method: 'POST',
-    body: { boardId, kind: 'smartrecruiters', identifier: 'Visa' },
+    body: { boardId, kind: fresh.kind, identifier: fresh.identifier },
   });
   check('a duplicate source is refused', dupe.status === 400, dupe.payload);
 }

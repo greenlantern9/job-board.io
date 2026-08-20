@@ -15,32 +15,81 @@
 // zero is worse than one that is absent.
 
 export const SEED_COMPANIES = [
-  { kind: 'greenhouse', identifier: 'databricks', label: 'Databricks' },
-  { kind: 'ashby', identifier: 'openai', label: 'OpenAI' },
-  { kind: 'greenhouse', identifier: 'stripe', label: 'Stripe' },
-  { kind: 'greenhouse', identifier: 'anthropic', label: 'Anthropic' },
-  { kind: 'greenhouse', identifier: 'datadog', label: 'Datadog' },
-  { kind: 'greenhouse', identifier: 'mongodb', label: 'MongoDB' },
-  { kind: 'greenhouse', identifier: 'cloudflare', label: 'Cloudflare' },
-  { kind: 'greenhouse', identifier: 'brex', label: 'Brex' },
-  { kind: 'greenhouse', identifier: 'elastic', label: 'Elastic' },
-  { kind: 'greenhouse', identifier: 'gitlab', label: 'GitLab' },
-  { kind: 'greenhouse', identifier: 'affirm', label: 'Affirm' },
-  { kind: 'greenhouse', identifier: 'airbnb', label: 'Airbnb' },
-  { kind: 'greenhouse', identifier: 'coinbase', label: 'Coinbase' },
-  { kind: 'greenhouse', identifier: 'figma', label: 'Figma' },
-  { kind: 'greenhouse', identifier: 'twilio', label: 'Twilio' },
-  { kind: 'greenhouse', identifier: 'reddit', label: 'Reddit' },
-  { kind: 'ashby', identifier: 'ramp', label: 'Ramp' },
-  { kind: 'greenhouse', identifier: 'asana', label: 'Asana' },
-  { kind: 'ashby', identifier: 'cursor', label: 'Cursor' },
-  { kind: 'greenhouse', identifier: 'instacart', label: 'Instacart' },
-  { kind: 'lever', identifier: 'spotify', label: 'Spotify' },
-  { kind: 'ashby', identifier: 'replit', label: 'Replit' },
-  { kind: 'greenhouse', identifier: 'discord', label: 'Discord' },
-  { kind: 'greenhouse', identifier: 'dropbox', label: 'Dropbox' },
-  { kind: 'ashby', identifier: 'linear', label: 'Linear' },
-  { kind: 'smartrecruiters', identifier: 'BoschGroup', label: 'Bosch' },
+  { kind: 'greenhouse', identifier: 'databricks', label: 'Databricks', category: 'software' },
+  { kind: 'ashby', identifier: 'openai', label: 'OpenAI', category: 'software' },
+  { kind: 'greenhouse', identifier: 'stripe', label: 'Stripe', category: 'software' },
+  { kind: 'greenhouse', identifier: 'anthropic', label: 'Anthropic', category: 'software' },
+  { kind: 'greenhouse', identifier: 'datadog', label: 'Datadog', category: 'software' },
+  { kind: 'greenhouse', identifier: 'mongodb', label: 'MongoDB', category: 'software' },
+  { kind: 'greenhouse', identifier: 'cloudflare', label: 'Cloudflare', category: 'software' },
+  { kind: 'greenhouse', identifier: 'brex', label: 'Brex', category: 'software' },
+  { kind: 'greenhouse', identifier: 'elastic', label: 'Elastic', category: 'software' },
+  { kind: 'greenhouse', identifier: 'gitlab', label: 'GitLab', category: 'software' },
+  { kind: 'greenhouse', identifier: 'affirm', label: 'Affirm', category: 'software' },
+  { kind: 'greenhouse', identifier: 'airbnb', label: 'Airbnb', category: 'software' },
+  { kind: 'greenhouse', identifier: 'coinbase', label: 'Coinbase', category: 'software' },
+  { kind: 'greenhouse', identifier: 'figma', label: 'Figma', category: 'software' },
+  { kind: 'greenhouse', identifier: 'twilio', label: 'Twilio', category: 'software' },
+  { kind: 'greenhouse', identifier: 'reddit', label: 'Reddit', category: 'software' },
+  { kind: 'ashby', identifier: 'ramp', label: 'Ramp', category: 'software' },
+  { kind: 'greenhouse', identifier: 'asana', label: 'Asana', category: 'software' },
+  { kind: 'ashby', identifier: 'cursor', label: 'Cursor', category: 'software' },
+  { kind: 'greenhouse', identifier: 'instacart', label: 'Instacart', category: 'software' },
+  { kind: 'lever', identifier: 'spotify', label: 'Spotify', category: 'software' },
+  { kind: 'ashby', identifier: 'replit', label: 'Replit', category: 'software' },
+  { kind: 'greenhouse', identifier: 'discord', label: 'Discord', category: 'software' },
+  { kind: 'greenhouse', identifier: 'dropbox', label: 'Dropbox', category: 'software' },
+  { kind: 'ashby', identifier: 'linear', label: 'Linear', category: 'software' },
+  { kind: 'smartrecruiters', identifier: 'BoschGroup', label: 'Bosch', category: 'software' },
+
+  // Verified additions, probed against the live APIs before being written down.
+  // Weighted deliberately away from technology: the original set was entirely
+  // software employers, which is why a photography or coaching board found
+  // nothing among them. A field with no companies here falls back to the
+  // aggregators and to discovery rather than borrowing someone else's.
+  //
+  // Thirty-seven other candidates were tried and dropped - health and trades
+  // in particular returned nothing usable, so those fields still depend on
+  // discovery. Shipping a slug that yields zero would only cost a request.
+
+  // Creative, media and design
+  { kind: 'greenhouse', identifier: 'squarespace', label: 'Squarespace', category: 'creative' },
+  { kind: 'greenhouse', identifier: 'hearst', label: 'Hearst', category: 'creative' },
+  { kind: 'greenhouse', identifier: 'a24', label: 'A24', category: 'creative' },
+  { kind: 'ashby', identifier: 'runway', label: 'Runway', category: 'creative' },
+  { kind: 'greenhouse', identifier: 'buzzfeed', label: 'BuzzFeed', category: 'creative' },
+
+  // Teaching and coaching
+  { kind: 'greenhouse', identifier: 'duolingo', label: 'Duolingo', category: 'teaching' },
+  { kind: 'greenhouse', identifier: 'khanacademy', label: 'Khan Academy', category: 'teaching' },
+  { kind: 'greenhouse', identifier: 'coursera', label: 'Coursera', category: 'teaching' },
+  { kind: 'greenhouse', identifier: 'outschool', label: 'Outschool', category: 'teaching' },
+
+  // Customer service and support
+  { kind: 'greenhouse', identifier: 'monzo', label: 'Monzo', category: 'support' },
+  { kind: 'greenhouse', identifier: 'chime', label: 'Chime', category: 'support' },
+  { kind: 'greenhouse', identifier: 'wise', label: 'Wise', category: 'support' },
+
+  // Consumer, retail and hospitality
+  { kind: 'greenhouse', identifier: 'lyft', label: 'Lyft', category: 'other' },
+  { kind: 'greenhouse', identifier: 'peloton', label: 'Peloton', category: 'other' },
+  { kind: 'greenhouse', identifier: 'sweetgreen', label: 'Sweetgreen', category: 'other' },
+  { kind: 'greenhouse', identifier: 'glossier', label: 'Glossier', category: 'other' },
+
+  // More technology, deepening the field that already worked
+  { kind: 'lever', identifier: 'palantir', label: 'Palantir', category: 'software' },
+  { kind: 'greenhouse', identifier: 'flexport', label: 'Flexport', category: 'software' },
+  { kind: 'greenhouse', identifier: 'robinhood', label: 'Robinhood', category: 'software' },
+  { kind: 'ashby', identifier: 'vanta', label: 'Vanta', category: 'software' },
+  { kind: 'greenhouse', identifier: 'gusto', label: 'Gusto', category: 'software' },
+  { kind: 'greenhouse', identifier: 'vercel', label: 'Vercel', category: 'software' },
+  { kind: 'ashby', identifier: 'supabase', label: 'Supabase', category: 'software' },
+  { kind: 'greenhouse', identifier: 'airtable', label: 'Airtable', category: 'software' },
+  // Visa verified with two open roles, which is not worth a source slot - and
+  // the end-to-end suite uses it as its example of a company the seeds do not
+  // cover, so seeding it would quietly break that check rather than the seed
+  // list being the thing that gives way.
+  { kind: 'greenhouse', identifier: 'marqeta', label: 'Marqeta', category: 'software' },
 ];
 
 /**

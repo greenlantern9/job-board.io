@@ -255,23 +255,30 @@ export async function discoverCompanies(env, { userId, category, prompt, selfHos
  * just to reach the companies we already knew about.
  */
 export async function seedDirectory(env, seeds) {
-  const existing = await queryOne(env, 'SELECT COUNT(*) AS n FROM company_directory');
-  if (existing && existing.n > 0) return 0;
+  // Insert what is missing, rather than skipping when the table is non-empty.
+  //
+  // The first version bailed out if the catalogue had any rows at all, so seeds
+  // added later never appeared on a database that had already been through it
+  // once - which is every deployment after the first. Creative, teaching and
+  // support boards found nothing while the entries they needed sat unwritten
+  // in the source file.
+  const existing = await queryAll(env, 'SELECT kind, identifier FROM company_directory');
+  const have = new Set(existing.map((row) => `${row.kind}:${row.identifier}`.toLowerCase()));
 
-  let added = 0;
-  for (const seed of seeds) {
+  const missing = seeds.filter((seed) => !have.has(`${seed.kind}:${seed.identifier}`.toLowerCase()));
+  for (const seed of missing) {
     await remember(env, {
       kind: seed.kind,
       identifier: seed.identifier,
       name: seed.label || seed.identifier,
-      // The built-ins are all technology employers; saying so keeps them from
-      // being offered to a photography board as though they were relevant.
-      category: 'software',
+      // Each seed carries its own field. Assuming software would have put
+      // Duolingo and A24 in front of an engineering board and nowhere near the
+      // teaching and creative boards they belong to.
+      category: seed.category || 'software',
       jobCount: 0,
     });
-    added++;
   }
-  return added;
+  return missing.length;
 }
 
 export { CATEGORIES };
