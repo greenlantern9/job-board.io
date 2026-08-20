@@ -391,15 +391,23 @@ async function repairTimeoutRetirements(env) {
   try {
     const done = await queryOne(
       env,
-      "SELECT category FROM discovery_attempts WHERE category = '__unretired_v1'"
+      "SELECT category FROM discovery_attempts WHERE category = '__unretired_v2'"
     );
     if (done) return;
 
+    // Run again, because the first pass only half fixed it.
+    //
+    // The transient/timeout split was applied where boards are refreshed but
+    // not where they are classified, and classification reads five hundred a
+    // tick - so employers went on being retired for slowness immediately after
+    // the first repair, and the marker for that repair had already been set.
+    // The counters are cleared together this time: a slow row that is never
+    // revisited never gets the vocabulary that makes it findable.
     await env.DB.prepare(
-      'UPDATE company_directory SET failed_streak = 0 WHERE failed_streak >= 3 AND job_count > 0'
+      'UPDATE company_directory SET failed_streak = 0, timeout_streak = 0 WHERE (failed_streak > 0 OR timeout_streak > 0) AND job_count > 0'
     ).run();
     await env.DB.prepare(
-      "INSERT OR IGNORE INTO discovery_attempts (category, attempted_at, found) VALUES ('__unretired_v1', ?, 0)"
+      "INSERT OR IGNORE INTO discovery_attempts (category, attempted_at, found) VALUES ('__unretired_v2', ?, 0)"
     )
       .bind(nowIso())
       .run();

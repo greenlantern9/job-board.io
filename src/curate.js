@@ -136,7 +136,13 @@ async function pruneDeadSources(env, board) {
     // would silently narrow the board back to whatever companies it knows.
     (s) =>
       !AGGREGATOR_KINDS.includes(s.kind) &&
-      (s.last_status === 'error' || (s.empty_streak || 0) >= EMPTY_STREAK_LIMIT)
+      // One bad read is not a dead source.
+      //
+      // This tested last_status, so a single timeout - the state a large board
+      // reaches routinely - deleted the source outright, despite the comment
+      // above describing repeated failure. Only a source that has also stopped
+      // returning anything is retired.
+      (s.empty_streak || 0) >= EMPTY_STREAK_LIMIT
   );
   if (doomed.length === 0) return { removed: 0, names: [] };
 

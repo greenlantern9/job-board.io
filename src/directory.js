@@ -161,8 +161,13 @@ export async function directoryFor(env, category, { limit = 20, exclude = [], te
       .map(({ row }) => row);
   };
 
-  const own = rank(
-    await queryAll(
+  // Both pools are read before anything is chosen from either.
+  //
+  // The cross-field query used to run after the in-field share had already been
+  // handed out, which meant a relevance pass could not see it - and referring to
+  // it early threw, leaving boards with no company sources at all.
+  const [own, largestRanked] = await Promise.all([
+    queryAll(
       env,
       `SELECT kind, identifier, name, job_count, title_terms, timeout_streak FROM company_directory
        WHERE category = ? AND failed_streak < ?
@@ -171,14 +176,8 @@ export async function directoryFor(env, category, { limit = 20, exclude = [], te
       category,
       FAILED_STREAK_LIMIT,
       POOL_SIZE
-    )
-  );
-  add(own, inField);
-
-  // The biggest employers in the catalogue, whatever they are filed under.
-  // These are where cross-cutting roles actually sit.
-  const largest = rank(
-    await queryAll(
+    ).then(rank),
+    queryAll(
       env,
       `SELECT kind, identifier, name, job_count, title_terms, timeout_streak FROM company_directory
        WHERE category <> '' AND failed_streak < ?
@@ -186,12 +185,32 @@ export async function directoryFor(env, category, { limit = 20, exclude = [], te
        LIMIT ?`,
       FAILED_STREAK_LIMIT,
       POOL_SIZE
-    )
-  );
-  add(largest, limit - picked.length);
+    ).then(rank),
+  ]);
 
-  // Anything still missing comes from the board's own field, which may have
-  // more to give now that the cross-field slots are filled.
+  // Employers that advertise the words searched for come first, from either
+  // pool.
+  //
+  // The in-field share used to be handed out before relevance was considered at
+  // all, so an employer filed under the board's field but advertising none of
+  // the searched words outranked one filed elsewhere advertising all of them -
+  // which is how a programme-management board came to be seeded with
+  // construction firms while Databricks and OpenAI sat unused.
+  const hitsOf = (row) => {
+    const vocabulary = new Set(String(row.title_terms || '').split(' '));
+    return wanted.filter((term) => vocabulary.has(term)).length;
+  };
+
+  if (wanted.length > 0) {
+    add(own.filter((row) => hitsOf(row) > 0), inField);
+    add(largestRanked.filter((row) => hitsOf(row) > 0), limit - picked.length);
+  }
+
+  // Then the ordinary shares, which is what happens when nothing advertises the
+  // words - a catalogue still being classified, or a search nobody is hiring
+  // for this week.
+  add(own, Math.max(0, inField - picked.length));
+  add(largestRanked, limit - picked.length);
   if (picked.length < limit) add(own, limit - picked.length);
 
   return picked;
@@ -613,7 +632,7 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
     env,
     `SELECT kind, identifier, category FROM company_directory
      WHERE (category = '' OR job_count = 0 OR title_terms = '') AND failed_streak < ?
-     ORDER BY job_count DESC
+     ORDER BY timeout_streak ASC, job_count DESC
      LIMIT ?`,
     FAILED_STREAK_LIMIT,
     limit
@@ -623,7 +642,10 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
   const readBoard = async (row) => {
     try {
       const jobs = await fetchSource({ kind: row.kind, identifier: row.identifier }, { selfHost });
-      if (!jobs.length) return { row, empty: true };
+      // Reachable but advertising nothing. Common and temporary - an employer
+      // between hiring rounds is not an employer that has gone away - so it is
+      // not counted against the row at all.
+      if (!jobs.length) return { row, quiet: true };
 
       const votes = new Map();
       for (const job of jobs) {
@@ -649,8 +671,17 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
       // must not relabel it from whatever happens to be posted this week.
       const category = row.category || (confident ? winner : 'other');
       return { row, category, jobCount: jobs.length, terms: titleTerms(jobs) };
-    } catch {
-      return { row, empty: true };
+    } catch (err) {
+      // Slow and gone, told apart.
+      //
+      // This catch took no argument, so every failure looked identical and all
+      // of them incremented failed_streak. Three ticks retired the row, and the
+      // pending query filters on failed_streak, so a retired row is never read
+      // again and nothing can clear it. That ran 500 boards a tick against a
+      // 12-second budget while the largest listings take nearly thirty seconds
+      // to return - which is how the biggest employers in the catalogue were
+      // removed from every search on the service.
+      return { row, failed: true, transient: Boolean(err && err.transient) };
     }
   };
 
@@ -674,11 +705,18 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
   let classified = 0;
   let retired = 0;
   for (const result of results) {
-    if (result.empty) {
+    if (result.quiet) {
+      // Nothing to record. It answered; it simply has nothing on today.
+      continue;
+    }
+    if (result.failed) {
       writes.push(
         env.DB.prepare(
-          `UPDATE company_directory SET failed_streak = failed_streak + 1
-           WHERE kind = ? AND identifier = ?`
+          result.transient
+            ? `UPDATE company_directory SET timeout_streak = timeout_streak + 1
+               WHERE kind = ? AND identifier = ?`
+            : `UPDATE company_directory SET failed_streak = failed_streak + 1
+               WHERE kind = ? AND identifier = ?`
         ).bind(result.row.kind, result.row.identifier)
       );
       retired += 1;
