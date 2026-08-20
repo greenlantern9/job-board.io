@@ -7,7 +7,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <style>
   :root {
     --ink: #12161c;
@@ -25,8 +24,8 @@
     --inert: #9f1239;       /* not working, or ignores its filter */
     --inert-wash: #fce7ec;
 
-    --sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   }
 
   :root:not([data-theme="light"]) {
@@ -279,7 +278,6 @@
       </table>
     </div>
 
-    <h3 style="margin-top:1.5rem">The company catalogue</h3>
     <p>Employer boards known to the service, shared by every user. A board with
       no field yet is in the table but reaches nobody, because sources are
       matched to a board by exact field.</p>
@@ -332,7 +330,7 @@
           </marker>
         </defs>
 
-        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" color="var(--ink-faint)">
+        <g font-family="var(--mono)" font-size="11" fill="currentColor" color="var(--ink-faint)">
           <text x="8" y="16" fill="var(--ink-faint)">SOURCES</text>
           <text x="272" y="16" fill="var(--ink-faint)">READ</text>
           <text x="410" y="16" fill="var(--ink-faint)">NARROW</text>
@@ -342,21 +340,21 @@
         <!-- source groups -->
         <g>
           <rect x="8" y="30" width="220" height="86" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1"/>
-          <text x="22" y="52" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Company boards</text>
-          <text x="22" y="72" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">greenhouse · lever · ashby</text>
-          <text x="22" y="88" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">smartrecruiters</text>
-          <text x="22" y="106" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">~4,900 catalogued · live count above</text>
+          <text x="22" y="52" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Company boards</text>
+          <text x="22" y="72" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">greenhouse · lever · ashby</text>
+          <text x="22" y="88" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">smartrecruiters</text>
+          <text x="22" y="106" font-family="var(--mono)" font-size="11" fill="var(--free)">~4,900 catalogued · live count above</text>
 
           <rect x="8" y="128" width="220" height="86" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1"/>
-          <text x="22" y="150" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Aggregators</text>
-          <text x="22" y="170" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">themuse · weworkremotely</text>
-          <text x="22" y="186" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">jobicy · arbeitnow · remoteok</text>
-          <text x="22" y="204" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--inert)">remotive · himalayas ignore filters</text>
+          <text x="22" y="150" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Aggregators</text>
+          <text x="22" y="170" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">themuse · weworkremotely</text>
+          <text x="22" y="186" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">jobicy · arbeitnow · remoteok</text>
+          <text x="22" y="204" font-family="var(--mono)" font-size="11" fill="var(--inert)">remotive · himalayas ignore filters</text>
 
           <rect x="8" y="226" width="220" height="72" rx="6" fill="var(--inert-wash)" stroke="var(--inert)" stroke-width="1" stroke-dasharray="4 3"/>
-          <text x="22" y="248" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Adzuna</text>
-          <text x="22" y="268" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">local · hourly · contract</text>
-          <text x="22" y="286" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--inert)">inert — no key set</text>
+          <text x="22" y="248" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Adzuna</text>
+          <text x="22" y="268" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">local · hourly · contract</text>
+          <text x="22" y="286" font-family="var(--mono)" font-size="11" fill="var(--inert)">inert — no key set</text>
         </g>
 
         <!-- arrows into fetch -->
@@ -368,8 +366,8 @@
 
         <!-- fetch -->
         <rect x="276" y="140" width="110" height="62" rx="6" fill="var(--surface)" stroke="var(--free)" stroke-width="1.5"/>
-        <text x="331" y="164" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Fetch</text>
-        <text x="331" y="182" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">8 at once</text>
+        <text x="331" y="164" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Fetch</text>
+        <text x="331" y="182" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--free)">8 at once</text>
 
         <g stroke="var(--line)" stroke-width="1.5" fill="none" color="var(--ink-faint)">
           <path d="M386,171 L416,171" marker-end="url(#ar)"/>
@@ -378,20 +376,20 @@
         <!-- narrow gates -->
         <g>
           <rect x="424" y="30" width="290" height="56" rx="6" fill="var(--surface)" stroke="var(--line)"/>
-          <text x="440" y="52" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">1 · Dedupe</text>
-          <text x="440" y="70" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">same role at same employer wins once</text>
+          <text x="440" y="52" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">1 · Dedupe</text>
+          <text x="440" y="70" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">same role at same employer wins once</text>
 
           <rect x="424" y="94" width="290" height="56" rx="6" fill="var(--surface)" stroke="var(--line)"/>
-          <text x="440" y="116" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">2 · Filter</text>
-          <text x="440" y="134" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">category · synonyms · salary · age · level</text>
+          <text x="440" y="116" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">2 · Filter</text>
+          <text x="440" y="134" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">category · synonyms · salary · age · level</text>
 
           <rect x="424" y="158" width="290" height="56" rx="6" fill="var(--surface)" stroke="var(--line)"/>
-          <text x="440" y="180" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">3 · Rank</text>
-          <text x="440" y="198" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">wrong field capped at 55</text>
+          <text x="440" y="180" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">3 · Rank</text>
+          <text x="440" y="198" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">wrong field capped at 55</text>
 
           <rect x="424" y="222" width="290" height="56" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1.5"/>
-          <text x="440" y="244" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">4 · Admit</text>
-          <text x="440" y="262" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">score ≥ 60 · best 10 · max 50 held</text>
+          <text x="440" y="244" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">4 · Admit</text>
+          <text x="440" y="262" font-family="var(--mono)" font-size="11" fill="var(--free)">score ≥ 60 · best 10 · max 50 held</text>
         </g>
 
         <g stroke="var(--line)" stroke-width="1.5" fill="none" color="var(--ink-faint)">
@@ -400,15 +398,15 @@
 
         <!-- board -->
         <rect x="742" y="128" width="150" height="66" rx="6" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>
-        <text x="817" y="152" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Your board</text>
-        <text x="817" y="172" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">ranked, deduped</text>
+        <text x="817" y="152" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Your board</text>
+        <text x="817" y="172" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">ranked, deduped</text>
 
-        <text x="742" y="230" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">Aggregator links are</text>
-        <text x="742" y="246" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">checked live before</text>
-        <text x="742" y="262" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">they are admitted.</text>
-        <text x="742" y="286" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">Company boards need</text>
-        <text x="742" y="302" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">no check — presence</text>
-        <text x="742" y="318" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">is the proof.</text>
+        <text x="742" y="230" font-family="var(--mono)" font-size="11" fill="var(--ink-faint)">Aggregator links are</text>
+        <text x="742" y="246" font-family="var(--mono)" font-size="11" fill="var(--ink-faint)">checked live before</text>
+        <text x="742" y="262" font-family="var(--mono)" font-size="11" fill="var(--ink-faint)">they are admitted.</text>
+        <text x="742" y="286" font-family="var(--mono)" font-size="11" fill="var(--ink-faint)">Company boards need</text>
+        <text x="742" y="302" font-family="var(--mono)" font-size="11" fill="var(--ink-faint)">no check — presence</text>
+        <text x="742" y="318" font-family="var(--mono)" font-size="11" fill="var(--ink-faint)">is the proof.</text>
       </svg>
     </div>
 
@@ -609,9 +607,9 @@
 
         <!-- gate -->
         <rect x="8" y="140" width="150" height="88" rx="6" fill="var(--spend-wash)" stroke="var(--spend)" stroke-width="1.5"/>
-        <text x="83" y="168" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Daily budget</text>
-        <text x="83" y="188" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--spend)">30 calls</text>
-        <text x="83" y="206" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">per account</text>
+        <text x="83" y="168" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Daily budget</text>
+        <text x="83" y="188" text-anchor="middle" font-family="var(--mono)" font-size="12" fill="var(--spend)">30 calls</text>
+        <text x="83" y="206" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">per account</text>
 
         <path d="M158,184 L196,184" stroke="var(--spend)" stroke-width="1.5" fill="none"/>
         <g stroke="var(--spend)" stroke-width="1.5" fill="none" color="var(--spend)">
@@ -625,24 +623,24 @@
         <!-- call sites -->
         <g>
           <rect x="240" y="18" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
-          <text x="256" y="40" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Ranking jobs</text>
-          <text x="256" y="58" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">15 per batch · only jobs already scoring ≥ 35</text>
+          <text x="256" y="40" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Ranking jobs</text>
+          <text x="256" y="58" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">15 per batch · only jobs already scoring ≥ 35</text>
 
           <rect x="240" y="88" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
-          <text x="256" y="110" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Finding employers</text>
-          <text x="256" y="128" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">weekly per board · picks who to watch</text>
+          <text x="256" y="110" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Finding employers</text>
+          <text x="256" y="128" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">weekly per board · picks who to watch</text>
 
           <rect x="240" y="158" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
-          <text x="256" y="180" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Suggesting companies</text>
-          <text x="256" y="198" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">on request · now counted against the allowance</text>
+          <text x="256" y="180" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Suggesting companies</text>
+          <text x="256" y="198" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">on request · now counted against the allowance</text>
 
           <rect x="240" y="228" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
-          <text x="256" y="250" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Reading your CV</text>
-          <text x="256" y="268" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">once per upload · low effort</text>
+          <text x="256" y="250" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Reading your CV</text>
+          <text x="256" y="268" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">once per upload · low effort</text>
 
           <rect x="240" y="298" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
-          <text x="256" y="320" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Scouting the web</text>
-          <text x="256" y="338" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">opt-in · 8 searches + 5 page reads · the expensive one</text>
+          <text x="256" y="320" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Scouting the web</text>
+          <text x="256" y="338" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">opt-in · 8 searches + 5 page reads · the expensive one</text>
         </g>
 
         <g stroke="var(--line)" stroke-width="1.5" fill="none" color="var(--ink-faint)">
@@ -654,13 +652,13 @@
         </g>
 
         <rect x="618" y="156" width="130" height="56" rx="6" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>
-        <text x="683" y="180" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">claude-opus-5</text>
-        <text x="683" y="198" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">prompt cached</text>
+        <text x="683" y="180" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">claude-opus-5</text>
+        <text x="683" y="198" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">prompt cached</text>
 
-        <text x="762" y="164" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">No key, or</text>
-        <text x="762" y="180" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">budget spent →</text>
-        <text x="762" y="196" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">built-in scorer</text>
-        <text x="762" y="212" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">takes over.</text>
+        <text x="762" y="164" font-family="var(--mono)" font-size="11" fill="var(--ink-faint)">No key, or</text>
+        <text x="762" y="180" font-family="var(--mono)" font-size="11" fill="var(--ink-faint)">budget spent →</text>
+        <text x="762" y="196" font-family="var(--mono)" font-size="11" fill="var(--free)">built-in scorer</text>
+        <text x="762" y="212" font-family="var(--mono)" font-size="11" fill="var(--ink-faint)">takes over.</text>
       </svg>
     </div>
 
@@ -714,301 +712,7 @@
 </div>
 
 
-<script>
-  const fmt = (n) => Number(n || 0).toLocaleString();
-  const when = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
-
-  function card(title, value, note, tone) {
-    const el = document.createElement('div');
-    el.className = 'card';
-    const h = document.createElement('h3');
-    h.textContent = title;
-    const v = document.createElement('div');
-    v.style.cssText = 'font-family:var(--mono);font-size:1.9rem;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums';
-    if (tone) v.style.color = tone;
-    v.textContent = value;
-    const p = document.createElement('p');
-    p.textContent = note;
-    el.append(h, v, p);
-    return el;
-  }
-
-  (async () => {
-    // Sub-cent amounts are the normal case here, and rounding them to $0.00
-    // would make real spend look like none at all.
-    const money = (n) => {
-      const v = Number(n || 0);
-      if (v === 0) return '$0';
-      if (v < 0.01) return '<$0.01';
-      return '
-    const table = document.querySelector('#source-table tbody');
-    try {
-      const res = await fetch('/api/admin/stats');
-      if (!res.ok) throw new Error('Stats unavailable (' + res.status + ')');
-      const s = await res.json();
-
-      cards.textContent = '';
-      cards.append(
-        card('Accounts', fmt(s.users.total),
-          fmt(s.users.withBoards) + ' built a board · ' + fmt(s.users.verified) + ' verified · ' + fmt(s.users.with2fa) + ' using 2FA'),
-        card('Boards', fmt(s.boards),
-          'First signup ' + when(s.users.firstSignup) + ' · latest ' + when(s.users.latestSignup)),
-        card('Jobs held', fmt(s.jobs.total),
-          fmt(s.jobs.applied) + ' applied to · ' + fmt(s.jobs.modelRanked) + ' ranked by the model'),
-        card('Leads found', fmt(s.leads), 'From scouting the open web'),
-        card('AI spend today', money(s.modelToday.cost),
-          fmt(s.modelToday.calls) + ' calls · ' + fmt(s.modelToday.scored) + ' jobs ranked · '
-            + fmt(s.modelToday.inputTokens) + ' in / ' + fmt(s.modelToday.outputTokens) + ' out',
-          s.modelToday.calls > 0 ? 'var(--spend)' : undefined),
-        card('AI spend all time', money((s.modelAllTime || {}).cost),
-          fmt((s.modelAllTime || {}).calls) + ' calls since launch · 30 per account per day',
-          'var(--spend)')
-      );
-
-      const missing = Object.entries({
-        'AI ranking': s.integrations.aiRanking,
-        'Two-factor': s.integrations.twoFactor,
-        'Email': s.integrations.email,
-        'Adzuna': s.integrations.adzuna,
-        'Cloudflare Access': s.integrations.cloudflareAccess,
-      }).filter(([, on]) => !on).map(([name]) => name);
-
-      cards.append(
-        card('Integrations', String(5 - missing.length) + ' / 5',
-          missing.length ? 'Not configured: ' + missing.join(', ') : 'All configured',
-          missing.length ? 'var(--inert)' : 'var(--free)')
-      );
-
-      const cat = s.catalogue || { total: 0, unclassified: 0, byPlatform: [], byField: [] };
-      const ready = cat.total - cat.unclassified;
-      cards.append(
-        card('Catalogue', fmt(cat.total),
-          cat.unclassified > 0
-            ? fmt(ready) + ' ready · ' + fmt(cat.unclassified) + ' still being classified'
-            : fmt(ready) + ' ready · every board classified',
-          cat.unclassified > 0 ? 'var(--spend)' : 'var(--free)')
-      );
-
-      const readiness = cat.readiness || {};
-      const rcards = document.getElementById('readiness-cards');
-      if (rcards) {
-        const pct = (n) => (readiness.total ? Math.round((n / readiness.total) * 100) + '%' : '—');
-        rcards.textContent = '';
-        rcards.append(
-          card('Employers catalogued', fmt(readiness.total), 'Company boards known to the service'),
-          card('Classified', fmt(readiness.classified),
-            pct(readiness.classified) + ' — the rest reach nobody until they have a field',
-            readiness.classified < readiness.total ? 'var(--spend)' : 'var(--free)'),
-          card('With a vocabulary', fmt(readiness.withVocabulary),
-            pct(readiness.withVocabulary) + ' — needed to match a search to an employer',
-            readiness.withVocabulary < readiness.total ? 'var(--spend)' : 'var(--free)'),
-          card('Retired', fmt(readiness.retired),
-            fmt(readiness.slow) + ' more are slow but still offered',
-            readiness.retired > 0 ? 'var(--inert)' : 'var(--free)'),
-          card('Last background pass', !cat.lastCron || cat.lastCron === 'never' ? 'Never' : new Date(cat.lastCron).toLocaleString(),
-            cat.lastCron === 'never' ? 'The cron has not completed a tick' : 'Loads, classifies, then discovers',
-            cat.lastCron === 'never' ? 'var(--inert)' : undefined)
-        );
-      }
-
-      const bigBody = document.querySelector('#biggest-table tbody');
-      if (bigBody) {
-        bigBody.textContent = '';
-        for (const row of cat.biggest || []) {
-          const tr = document.createElement('tr');
-          const name = document.createElement('td');
-          name.className = 'name';
-          name.textContent = row.identifier;
-          const n = document.createElement('td');
-          n.className = 'num';
-          n.textContent = fmt(row.job_count);
-          const state = document.createElement('td');
-          const tag = document.createElement('span');
-          if (row.failed_streak >= 3) {
-            tag.className = 'tag tag--inert';
-            tag.textContent = 'retired';
-          } else if (row.timeout_streak > 0) {
-            tag.className = 'tag tag--spend';
-            tag.textContent = 'slow · offered last';
-          } else {
-            tag.className = 'tag tag--free';
-            tag.textContent = 'in use';
-          }
-          state.append(tag);
-          tr.append(name, n, state);
-          bigBody.append(tr);
-        }
-      }
-
-      const catBody = document.querySelector('#catalogue-table tbody');
-      catBody.textContent = '';
-      if (!cat.byPlatform.length) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 4;
-        td.textContent = 'Catalogue is empty.';
-        tr.append(td);
-        catBody.append(tr);
-      }
-      for (const row of cat.byPlatform) {
-        const tr = document.createElement('tr');
-        for (const [value, cls] of [[row.kind, 'name'], [fmt(row.n), 'num'], [fmt(row.unclassified), 'num'], [fmt(row.retired), 'num']]) {
-          const td = document.createElement('td');
-          td.className = cls;
-          td.textContent = value;
-          tr.append(td);
-        }
-        catBody.append(tr);
-      }
-
-      table.textContent = '';
-      if (!s.sources.length) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 3;
-        td.textContent = 'No sources connected yet.';
-        tr.append(td);
-        table.append(tr);
-      }
-      for (const row of s.sources) {
-        const tr = document.createElement('tr');
-        const kind = document.createElement('td');
-        kind.className = 'name';
-        kind.textContent = row.kind;
-        const n = document.createElement('td');
-        n.className = 'num';
-        n.textContent = fmt(row.n);
-        const found = document.createElement('td');
-        found.className = 'num';
-        found.textContent = fmt(row.found);
-        tr.append(kind, n, found);
-        table.append(tr);
-      }
-    } catch (err) {
-      cards.textContent = '';
-      const el = document.createElement('div');
-      el.className = 'card';
-      const h = document.createElement('h3');
-      h.textContent = 'Could not load stats';
-      const p = document.createElement('p');
-      p.textContent = err.message;
-      el.append(h, p);
-      cards.append(el);
-    }
-  })();
-</script>
-
-</body>
-</html>
- + v.toFixed(2);
-    };
-
-    const cards = document.getElementById('stat-cards');
-    const table = document.querySelector('#source-table tbody');
-    try {
-      const res = await fetch('/api/admin/stats');
-      if (!res.ok) throw new Error('Stats unavailable (' + res.status + ')');
-      const s = await res.json();
-
-      cards.textContent = '';
-      cards.append(
-        card('Accounts', fmt(s.users.total),
-          fmt(s.users.withBoards) + ' built a board · ' + fmt(s.users.verified) + ' verified · ' + fmt(s.users.with2fa) + ' using 2FA'),
-        card('Boards', fmt(s.boards),
-          'First signup ' + when(s.users.firstSignup) + ' · latest ' + when(s.users.latestSignup)),
-        card('Jobs held', fmt(s.jobs.total),
-          fmt(s.jobs.applied) + ' applied to · ' + fmt(s.jobs.modelRanked) + ' ranked by the model'),
-        card('Leads found', fmt(s.leads), 'From scouting the open web'),
-        card('AI spend today', money(s.modelToday.cost),
-          fmt(s.modelToday.calls) + ' calls · ' + fmt(s.modelToday.scored) + ' jobs ranked · '
-            + fmt(s.modelToday.inputTokens) + ' in / ' + fmt(s.modelToday.outputTokens) + ' out',
-          s.modelToday.calls > 0 ? 'var(--spend)' : undefined),
-        card('AI spend all time', money((s.modelAllTime || {}).cost),
-          fmt((s.modelAllTime || {}).calls) + ' calls since launch · 30 per account per day',
-          'var(--spend)')
-      );
-
-      const missing = Object.entries({
-        'AI ranking': s.integrations.aiRanking,
-        'Two-factor': s.integrations.twoFactor,
-        'Email': s.integrations.email,
-        'Adzuna': s.integrations.adzuna,
-        'Cloudflare Access': s.integrations.cloudflareAccess,
-      }).filter(([, on]) => !on).map(([name]) => name);
-
-      cards.append(
-        card('Integrations', String(5 - missing.length) + ' / 5',
-          missing.length ? 'Not configured: ' + missing.join(', ') : 'All configured',
-          missing.length ? 'var(--inert)' : 'var(--free)')
-      );
-
-      const cat = s.catalogue || { total: 0, unclassified: 0, byPlatform: [], byField: [] };
-      const ready = cat.total - cat.unclassified;
-      cards.append(
-        card('Catalogue', fmt(cat.total),
-          cat.unclassified > 0
-            ? fmt(ready) + ' ready · ' + fmt(cat.unclassified) + ' still being classified'
-            : fmt(ready) + ' ready · every board classified',
-          cat.unclassified > 0 ? 'var(--spend)' : 'var(--free)')
-      );
-
-      const catBody = document.querySelector('#catalogue-table tbody');
-      catBody.textContent = '';
-      if (!cat.byPlatform.length) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 4;
-        td.textContent = 'Catalogue is empty.';
-        tr.append(td);
-        catBody.append(tr);
-      }
-      for (const row of cat.byPlatform) {
-        const tr = document.createElement('tr');
-        for (const [value, cls] of [[row.kind, 'name'], [fmt(row.n), 'num'], [fmt(row.unclassified), 'num'], [fmt(row.retired), 'num']]) {
-          const td = document.createElement('td');
-          td.className = cls;
-          td.textContent = value;
-          tr.append(td);
-        }
-        catBody.append(tr);
-      }
-
-      table.textContent = '';
-      if (!s.sources.length) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 3;
-        td.textContent = 'No sources connected yet.';
-        tr.append(td);
-        table.append(tr);
-      }
-      for (const row of s.sources) {
-        const tr = document.createElement('tr');
-        const kind = document.createElement('td');
-        kind.className = 'name';
-        kind.textContent = row.kind;
-        const n = document.createElement('td');
-        n.className = 'num';
-        n.textContent = fmt(row.n);
-        const found = document.createElement('td');
-        found.className = 'num';
-        found.textContent = fmt(row.found);
-        tr.append(kind, n, found);
-        table.append(tr);
-      }
-    } catch (err) {
-      cards.textContent = '';
-      const el = document.createElement('div');
-      el.className = 'card';
-      const h = document.createElement('h3');
-      h.textContent = 'Could not load stats';
-      const p = document.createElement('p');
-      p.textContent = err.message;
-      el.append(h, p);
-      cards.append(el);
-    }
-  })();
-</script>
+<script src="/assets/admin.js" defer></script>
 
 </body>
 </html>
