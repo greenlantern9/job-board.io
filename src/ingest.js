@@ -66,6 +66,35 @@ export const MAX_ACTIVE_JOBS = 50;
 export const ADMIT_SCORE_FLOOR = 60;
 
 /**
+ * How many active jobs one employer may hold on a board.
+ *
+ * A board is meant to show what is out there, and a single employer with a
+ * large careers page can otherwise take every slot: a programme-management
+ * board came back with its whole first page from one defence contractor, all
+ * of them genuine matches and all of them the same employer.
+ *
+ * Applied against what the board already holds, not just the current batch, so
+ * one employer cannot accumulate across refreshes. Relaxed rather than enforced
+ * when nothing else clears the bar - an empty slot helps nobody, and variety is
+ * a preference where relevance is a requirement.
+ */
+export const PER_EMPLOYER_LIMIT = 3;
+
+/**
+ * The share of a board one employer may hold once the backfill has run.
+ *
+ * The fair pass alone could not hold the line: a programme-management search
+ * found qualifying roles at only two employers, so filling ten slots meant
+ * nine from one of them however the first pass was ordered. An unbounded
+ * backfill is therefore no cap at all.
+ *
+ * A board that shows six good jobs from a market with two employers in it is
+ * telling the truth about that market. Ten, nine of them from one company, is
+ * not - it reads as a broken board, which is how this was reported.
+ */
+export const PER_EMPLOYER_CEILING = 0.5;
+
+/**
  * Statuses that do not consume a slot.
  *
  * Rejecting or archiving is the user saying "not this one", and that decision
@@ -88,6 +117,18 @@ export async function activeJobCount(env, boardId) {
     boardId
   );
   return (row && row.n) || 0;
+}
+
+/** How many active jobs the board already holds from each employer. */
+async function activeByCompany(env, boardId) {
+  const rows = await queryAll(
+    env,
+    `SELECT LOWER(TRIM(company)) AS company, COUNT(*) AS n FROM jobs
+     WHERE board_id = ? AND status NOT IN ('rejected', 'archived', 'delisted')
+     GROUP BY LOWER(TRIM(company))`,
+    boardId
+  );
+  return new Map(rows.map((row) => [row.company, row.n]));
 }
 
 function isTooOld(job) {
@@ -363,10 +404,43 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     summary.belowBar = ranked.length - relevant.length;
     summary.passedOver = Math.max(0, relevant.length - slots);
 
-    toInsert.length = 0;
     // Overshoot deliberately: link checking drops some, and trimming to exactly
     // `slots` afterwards means a dead posting does not silently cost a slot.
-    toInsert.push(...relevant.slice(0, slots + LINK_CHECK_OVERSHOOT).map(({ entry }) => entry));
+    const want = slots + LINK_CHECK_OVERSHOOT;
+    const held = await activeByCompany(env, board.id);
+    const employer = (entry) => String(entry.job.company || '').trim().toLowerCase();
+
+    const chosen = [];
+    const taken = new Set();
+    for (const item of relevant) {
+      if (chosen.length >= want) break;
+      const key = employer(item.entry);
+      // An employer with no name cannot be spread against, so it is not capped.
+      if (key && (held.get(key) || 0) >= PER_EMPLOYER_LIMIT) continue;
+      chosen.push(item);
+      taken.add(item);
+      if (key) held.set(key, (held.get(key) || 0) + 1);
+    }
+
+    // Fill what is left, but never past the ceiling. Leaving a slot empty is
+    // the lesser harm: the jobs excluded here are still findable by refreshing
+    // once the board has room, and a board dominated by one employer hides the
+    // market rather than showing it.
+    if (chosen.length < want) {
+      const ceiling = Math.max(PER_EMPLOYER_LIMIT, Math.ceil(slots * PER_EMPLOYER_CEILING));
+      for (const item of relevant) {
+        if (chosen.length >= want) break;
+        if (taken.has(item)) continue;
+        const key = employer(item.entry);
+        if (key && (held.get(key) || 0) >= ceiling) continue;
+        chosen.push(item);
+        if (key) held.set(key, (held.get(key) || 0) + 1);
+      }
+    }
+    summary.employersHeld = new Set(chosen.map((item) => employer(item.entry)).filter(Boolean)).size;
+
+    toInsert.length = 0;
+    toInsert.push(...chosen.map(({ entry }) => entry));
   }
 
   if (toInsert.length > 0) {
