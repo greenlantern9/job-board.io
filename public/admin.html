@@ -322,7 +322,7 @@
           <text x="22" y="52" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Company boards</text>
           <text x="22" y="72" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">greenhouse · lever · ashby</text>
           <text x="22" y="88" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">smartrecruiters</text>
-          <text x="22" y="106" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">113 built in, plus what discovery finds</text>
+          <text x="22" y="106" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">~4,900 catalogued · live count above</text>
 
           <rect x="8" y="128" width="220" height="86" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1"/>
           <text x="22" y="150" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Aggregators</text>
@@ -478,74 +478,106 @@
     <p>
       No applicant tracking system publishes a directory. Greenhouse has thousands of customers and
       no way to list them — <code>/v1/boards</code> and <code>/v1/jobs</code> both return 404, while
-      <code>/v1/boards/stripe/jobs</code> returns 200. There is no sitemap either. The only way in is
-      a slug you already know, so the reachable set is bounded by what can be named.
+      <code>/v1/boards/stripe/jobs</code> returns 200. There is no sitemap on any of the four
+      platforms. The only way to reach a board is with a slug you already know.
     </p>
     <p>
-      Every entry below was probed against the live API before being written down. Of 298 candidates
-      tried across three passes, 113 answered with real jobs; the rest were dropped rather than
-      shipped hopefully, because a slug that silently yields nothing costs a request on every refresh.
+      That used to mean buying slugs one at a time: a web search per company, paid for by whoever
+      wanted that field first. The catalogue reached 113 boards that way. A published list of
+      employers with live Greenhouse boards then supplied <strong>4,870 at once</strong>, and removed
+      the need to pay for discovery on that platform entirely.
+    </p>
+    <p>
+      The list was not taken on trust. A sample of 60 spread across it was probed against the live
+      API before anything was committed: <strong>every slug resolved</strong>, and 55 still had
+      openings. The five misses were boards that had emptied since the list was compiled — the decay
+      its own notes warn about, rather than bad slugs. Boards that go quiet are retired
+      automatically after three consecutive failures.
     </p>
 
     <div class="scroll">
       <table>
         <thead>
-          <tr><th>Platform</th><th>Boards</th><th>Notes</th></tr>
+          <tr><th>Platform</th><th>How boards are found</th><th>Notes</th></tr>
         </thead>
         <tbody>
-          <tr><td class="name">greenhouse</td><td class="num">69</td><td>The widest coverage, and the easiest slugs to guess correctly.</td></tr>
-          <tr><td class="name">ashby</td><td class="num">39</td><td>Newer, so its customers skew to recently founded companies — a much better hit rate than Lever.</td></tr>
-          <tr><td class="name">lever</td><td class="num">4</td><td>Poor yield: most named candidates did not resolve.</td></tr>
-          <tr><td class="name">smartrecruiters</td><td class="num">1</td><td>Enterprise-heavy, and slugs are PascalCase rather than lowercase.</td></tr>
+          <tr><td class="name">greenhouse</td><td>Published list</td><td>Thousands of verified slugs, no per-company cost. Discovery is unnecessary here.</td></tr>
+          <tr><td class="name">ashby</td><td>Discovery</td><td>Newer, so its customers skew to recently founded companies — a much better hit rate than Lever.</td></tr>
+          <tr><td class="name">lever</td><td>Discovery</td><td>Poor yield: most named candidates did not resolve.</td></tr>
+          <tr><td class="name">smartrecruiters</td><td>Discovery</td><td>Enterprise-heavy, and slugs are PascalCase rather than lowercase.</td></tr>
         </tbody>
       </table>
     </div>
+    <p class="hint" style="margin-top:.5rem">
+      Live counts are in the Catalogue table at the top of this page. They are deliberately not
+      repeated here — this section went stale three times in one day quoting numbers that had moved.
+    </p>
 
-    <p style="margin-top:1.5rem">
-      Each board carries the field it belongs to, so a coaching search reaches Duolingo and Khan
-      Academy while an engineering search never sees them.
+    <h3 style="margin-top:2rem">Working out what each employer hires for</h3>
+    <p>
+      A slug alone is not enough. Sources are matched to a board by exact field, so an employer with
+      no field assigned is in the table but reaches nobody. A list can supply the slug; it cannot say
+      whether the company hires nurses or engineers.
+    </p>
+    <p>
+      Rather than pay a model to guess from company names, a background pass reads the jobs already
+      on each board and takes the field with the most postings. A company name tells you nothing;
+      thirty postings for veterinary technicians tell you everything. It costs one fetch and
+      <strong>no tokens at all</strong>.
+    </p>
+    <p>
+      Reading real titles immediately exposed three faults that would otherwise have misfiled
+      thousands of employers:
     </p>
 
     <div class="scroll">
       <table>
         <thead>
-          <tr><th>Field</th><th>Boards</th><th>State</th></tr>
+          <tr><th>Fault</th><th>Measured on a live board</th><th>Fix</th></tr>
         </thead>
         <tbody>
-          <tr><td class="name">software</td><td class="num">47</td><td><span class="tag tag--free">deep</span></td></tr>
-          <tr><td class="name">creative</td><td class="num">17</td><td><span class="tag tag--free">deep</span></td></tr>
-          <tr><td class="name">care</td><td class="num">11</td><td><span class="tag tag--free">usable</span></td></tr>
-          <tr><td class="name">teaching</td><td class="num">9</td><td><span class="tag tag--free">usable</span></td></tr>
-          <tr><td class="name">support</td><td class="num">7</td><td><span class="tag tag--free">usable</span></td></tr>
-          <tr><td class="name">other</td><td class="num">6</td><td><span class="tag tag--free">usable</span></td></tr>
-          <tr><td class="name">marketing</td><td class="num">5</td><td><span class="tag tag--free">usable</span></td></tr>
-          <tr><td class="name">trades</td><td class="num">4</td><td><span class="tag tag--inert">thin</span></td></tr>
-          <tr><td class="name">product</td><td class="num">4</td><td><span class="tag tag--inert">thin</span></td></tr>
-          <tr><td class="name">sales</td><td class="num">3</td><td><span class="tag tag--inert">thin</span></td></tr>
+          <tr>
+            <td class="name">Bare “engineer” read as software</td>
+            <td>An HVAC manufacturer had <strong>54 of 108</strong> postings called software — field service, electrical, plant process</td>
+            <td>Explicit match precedence, trades tested first. The pattern was not narrowed: somebody typing “engineer” into the box does mean software</td>
+          </tr>
+          <tr>
+            <td class="name">No veterinary terms in care</td>
+            <td><strong>285 of 297</strong> postings on a veterinary board matched nothing at all</td>
+            <td>Pattern widened; 286 of them now match</td>
+          </tr>
+          <tr>
+            <td class="name">One posting could decide a board</td>
+            <td>A film studio filed under marketing on <strong>a single vote out of seven</strong></td>
+            <td>A winner must clear two postings and 15% of the board, or the board is filed as <code>other</code></td>
+          </tr>
         </tbody>
       </table>
     </div>
 
     <p class="note">
-      <strong>These are a floor, not a ceiling.</strong> Discovery reads slugs off real careers pages
-      and writes what it verifies into a catalogue shared by every board. Finding a slug costs a few
-      web searches once; the slug is then permanent and identical for everyone, so the next board in
-      that field gets it for nothing. Thin fields no longer wait for somebody to want them: a background pass on the cron tops up
-      whichever field is furthest below fifteen boards, one per tick, and stops entirely once every
-      field is at target. Discovery is off the critical path of board creation for good.
+      <strong>Cheapest first, and paid discovery last.</strong> Each cron tick loads more of the
+      published list, then classifies boards it already knows about, and only then considers paying
+      to search for boards nobody has listed. Buying a slug through web search while an unclassified
+      one sits in the table would be spending money on work already done, so discovery is blocked
+      outright until that backlog is clear. When it does run it stops at a target per field, so the
+      work is bounded and mostly happens once — and it is charged to its own budget rather than to
+      whichever account happened to trigger the tick.
     </p>
   </section>
 
   <section>
     <h2>Where the API key is spent</h2>
     <p>
-      Four call sites, nothing else. Every one is gated by the same daily allowance, and the
+      Five call sites, nothing else. Every one is gated by the same daily allowance, and the
       allowance is claimed <strong>before</strong> the request goes out — so a crash mid-call costs
-      the budget rather than escaping it.
+      the budget rather than escaping it. Company suggestions were the exception until recently:
+      rate-limited per user but never counted, so they could be used to spend past a cap documented
+      as the ceiling. They now reserve like everything else.
     </p>
 
     <div class="figure">
-      <svg viewBox="0 0 900 300" role="img" aria-label="Four call sites gated by a shared daily budget">
+      <svg viewBox="0 0 900 370" role="img" aria-label="Five call sites gated by a shared daily budget">
         <defs>
           <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
@@ -553,16 +585,18 @@
         </defs>
 
         <!-- gate -->
-        <rect x="8" y="106" width="150" height="88" rx="6" fill="var(--spend-wash)" stroke="var(--spend)" stroke-width="1.5"/>
-        <text x="83" y="134" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Daily budget</text>
-        <text x="83" y="154" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--spend)">30 calls</text>
-        <text x="83" y="172" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">per account</text>
+        <rect x="8" y="140" width="150" height="88" rx="6" fill="var(--spend-wash)" stroke="var(--spend)" stroke-width="1.5"/>
+        <text x="83" y="168" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Daily budget</text>
+        <text x="83" y="188" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--spend)">30 calls</text>
+        <text x="83" y="206" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">per account</text>
 
+        <path d="M158,184 L196,184" stroke="var(--spend)" stroke-width="1.5" fill="none"/>
         <g stroke="var(--spend)" stroke-width="1.5" fill="none" color="var(--spend)">
-          <path d="M158,150 L196,150 L196,44 L236,44" marker-end="url(#ar2)"/>
-          <path d="M196,114 L236,114" marker-end="url(#ar2)"/>
-          <path d="M196,150 L196,184 L236,184" marker-end="url(#ar2)"/>
-          <path d="M196,150 L196,254 L236,254" marker-end="url(#ar2)"/>
+          <path d="M196,184 L196,44 L236,44" marker-end="url(#ar2)"/>
+          <path d="M196,184 L196,114 L236,114" marker-end="url(#ar2)"/>
+          <path d="M196,184 L236,184" marker-end="url(#ar2)"/>
+          <path d="M196,184 L196,254 L236,254" marker-end="url(#ar2)"/>
+          <path d="M196,184 L196,324 L236,324" marker-end="url(#ar2)"/>
         </g>
 
         <!-- call sites -->
@@ -572,46 +606,56 @@
           <text x="256" y="58" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">15 per batch · only jobs already scoring ≥ 35</text>
 
           <rect x="240" y="88" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
-          <text x="256" y="110" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Scouting the web</text>
-          <text x="256" y="128" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">8 searches + 5 page reads · the expensive one</text>
+          <text x="256" y="110" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Finding employers</text>
+          <text x="256" y="128" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">weekly per board · picks who to watch</text>
 
           <rect x="240" y="158" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
-          <text x="256" y="180" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Reading your CV</text>
-          <text x="256" y="198" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">once per upload · low effort</text>
+          <text x="256" y="180" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Suggesting companies</text>
+          <text x="256" y="198" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">on request · now counted against the allowance</text>
 
           <rect x="240" y="228" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
-          <text x="256" y="250" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Finding employers</text>
-          <text x="256" y="268" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">weekly per board · picks who to watch</text>
+          <text x="256" y="250" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Reading your CV</text>
+          <text x="256" y="268" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">once per upload · low effort</text>
+
+          <rect x="240" y="298" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
+          <text x="256" y="320" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Scouting the web</text>
+          <text x="256" y="338" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">opt-in · 8 searches + 5 page reads · the expensive one</text>
         </g>
 
         <g stroke="var(--line)" stroke-width="1.5" fill="none" color="var(--ink-faint)">
-          <path d="M570,44 L610,44 L610,140" marker-end="url(#ar2)"/>
-          <path d="M570,114 L610,114" marker-end="url(#ar2)"/>
-          <path d="M570,184 L610,184 L610,160" marker-end="url(#ar2)"/>
-          <path d="M570,254 L610,254 L610,170" marker-end="url(#ar2)"/>
+          <path d="M570,44 L610,44 L610,184" marker-end="url(#ar2)"/>
+          <path d="M570,114 L610,114 L610,184" marker-end="url(#ar2)"/>
+          <path d="M570,184 L610,184" marker-end="url(#ar2)"/>
+          <path d="M570,254 L610,254 L610,184" marker-end="url(#ar2)"/>
+          <path d="M570,324 L610,324 L610,184" marker-end="url(#ar2)"/>
         </g>
 
-        <rect x="618" y="112" width="130" height="56" rx="6" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>
-        <text x="683" y="136" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">claude-opus-5</text>
-        <text x="683" y="154" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">prompt cached</text>
+        <rect x="618" y="156" width="130" height="56" rx="6" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>
+        <text x="683" y="180" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">claude-opus-5</text>
+        <text x="683" y="198" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">prompt cached</text>
 
-        <text x="762" y="128" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">No key, or</text>
-        <text x="762" y="144" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">budget spent →</text>
-        <text x="762" y="160" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">built-in scorer</text>
-        <text x="762" y="176" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">takes over.</text>
+        <text x="762" y="164" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">No key, or</text>
+        <text x="762" y="180" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">budget spent →</text>
+        <text x="762" y="196" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">built-in scorer</text>
+        <text x="762" y="212" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">takes over.</text>
       </svg>
     </div>
 
     <div class="cards">
       <div class="card">
         <h3>Ranking jobs</h3>
-        <span class="cost">~1 call per refresh</span>
-        <p>Reads your sentence and scores each posting against it. Jobs the built-in scorer already rates below 35 are never sent — paying to confirm a warehouse role isn't a photography job is the easiest waste to cut.</p>
+        <span class="cost">up to 4 calls per refresh</span>
+        <p>Reads your sentence and scores each posting against it. Jobs the built-in scorer already rates below 35 are never sent — paying to confirm a warehouse role isn’t a photography job is the easiest waste to cut. A refresh that finds nothing new costs nothing at all.</p>
       </div>
       <div class="card">
-        <h3>Scouting the web</h3>
-        <span class="cost">~5–15¢ per run</span>
-        <p>The costly one: every search is billed on top of tokens. Finds organisations to approach directly, for work no job board carries.</p>
+        <h3>Finding employers</h3>
+        <span class="cost">1 call per board, weekly</span>
+        <p>Decides which companies are worth watching, and verifies each has a live job board before connecting it. Blocked entirely while the catalogue still has unclassified boards, since those can be sorted out for free.</p>
+      </div>
+      <div class="card">
+        <h3>Suggesting companies</h3>
+        <span class="cost">1 call, on request</span>
+        <p>Proposes employers resembling the ones already on a board. Low effort, because it is recall rather than analysis and somebody is waiting on it.</p>
       </div>
       <div class="card">
         <h3>Reading your CV</h3>
@@ -619,9 +663,14 @@
         <p>Pulls out skills, titles and years. Works without a key too, just less well — the built-in reader handles the common case.</p>
       </div>
       <div class="card">
-        <h3>Finding employers</h3>
-        <span class="cost">1 call per board, weekly</span>
-        <p>Decides which companies are worth watching for your criteria, and verifies each has a live job board before connecting it.</p>
+        <h3>Scouting the web</h3>
+        <span class="cost">~5–15¢ per run</span>
+        <p>The costly one: every search is billed on top of tokens. Finds organisations to approach directly, for work no job board carries. Opt-in, and off unless explicitly asked for.</p>
+      </div>
+      <div class="card">
+        <h3>Classifying employers</h3>
+        <span class="cost">free</span>
+        <p>Not a model call at all. Reads the titles already on a board and counts them, which is both cheaper and more accurate than asking a model to guess from a company name.</p>
       </div>
     </div>
 
@@ -629,12 +678,14 @@
       <strong>Nothing breaks without the key.</strong> Every path falls back to the built-in scorer,
       which is why a missing key was invisible for so long — the board kept working, just worse.
       That is also why the daily ceiling is enforced rather than advised: an overspend would have no
-      symptom until the bill.
+      symptom until the bill. Token counts are now recorded on every response and priced at published
+      rates, so the figures at the top of this page are measured rather than inferred from payload
+      caps — which is what they were until this was added.
     </p>
   </section>
 
   <footer>
-    Measured 18 August 2026 · figures from live calls, not documentation
+    Measured 20 August 2026 · figures from live calls, not documentation
   </footer>
 
 </div>
