@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- Served only to the configured owner; see src/admin.js for the gate. -->
+<title>job-boards.io admin</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --ink: #12161c;
+    --ink-soft: #414c5c;
+    --ink-faint: #6b7789;
+    --ground: #f6f8fa;
+    --surface: #ffffff;
+    --line: #d9e0e8;
+    --line-soft: #e8edf2;
+
+    --free: #0e7490;        /* costs nothing */
+    --free-wash: #e0f2f6;
+    --spend: #b45309;       /* spends money */
+    --spend-wash: #fdf0dd;
+    --inert: #9f1239;       /* not working, or ignores its filter */
+    --inert-wash: #fce7ec;
+
+    --sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --ink: #e6ecf3;
+      --ink-soft: #a8b4c4;
+      --ink-faint: #77849a;
+      --ground: #0d1117;
+      --surface: #151b23;
+      --line: #2a333f;
+      --line-soft: #202832;
+
+      --free: #4dd0e1;
+      --free-wash: #10333c;
+      --spend: #f0b429;
+      --spend-wash: #3a2c10;
+      --inert: #f47b90;
+      --inert-wash: #3b1620;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ink: #e6ecf3;
+    --ink-soft: #a8b4c4;
+    --ink-faint: #77849a;
+    --ground: #0d1117;
+    --surface: #151b23;
+    --line: #2a333f;
+    --line-soft: #202832;
+
+    --free: #4dd0e1;
+    --free-wash: #10333c;
+    --spend: #f0b429;
+    --spend-wash: #3a2c10;
+    --inert: #f47b90;
+    --inert-wash: #3b1620;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4rem) clamp(1rem, 4vw, 2.5rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.5rem;
+  }
+
+  header { display: flex; flex-direction: column; gap: .75rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .75rem;
+    font-weight: 500;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.9rem, 4vw, 2.6rem);
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+
+  h2 {
+    margin: 0 0 .5rem;
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    text-wrap: balance;
+  }
+
+  h3 {
+    margin: 0 0 .35rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  p { margin: 0 0 1rem; max-width: 65ch; color: var(--ink-soft); }
+  p:last-child { margin-bottom: 0; }
+  strong { color: var(--ink); font-weight: 600; }
+
+  section { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .lede { font-size: 1.05rem; color: var(--ink-soft); max-width: 62ch; }
+
+  .figure {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.5rem 1.25rem;
+    overflow-x: auto;
+  }
+  .figure svg { display: block; min-width: 660px; width: 100%; height: auto; }
+
+  .key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    font-family: var(--mono);
+    font-size: .75rem;
+    color: var(--ink-soft);
+  }
+  .key span { display: inline-flex; align-items: center; gap: .45rem; }
+  .swatch { width: .7rem; height: .7rem; border-radius: 2px; flex: none; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .875rem;
+  }
+  .scroll { overflow-x: auto; }
+  th, td {
+    text-align: left;
+    padding: .6rem .75rem;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+  th {
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  td.name { font-family: var(--mono); font-weight: 500; white-space: nowrap; color: var(--ink); }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: .7rem;
+    font-weight: 500;
+    padding: .12rem .45rem;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .tag--free  { background: var(--free-wash);  color: var(--free); }
+  .tag--spend { background: var(--spend-wash); color: var(--spend); }
+  .tag--inert { background: var(--inert-wash); color: var(--inert); }
+
+  .note {
+    border-left: 2px solid var(--line);
+    padding-left: 1rem;
+    font-size: .9rem;
+    color: var(--ink-soft);
+  }
+  .note strong { color: var(--ink); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+  }
+  .card .cost {
+    font-family: var(--mono);
+    font-size: .75rem;
+    color: var(--spend);
+  }
+  .card p { font-size: .875rem; margin: 0; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 1.25rem;
+    font-family: var(--mono);
+    font-size: .75rem;
+    color: var(--ink-faint);
+  }
+
+  @media (max-width: 30rem) {
+    .key { gap: .75rem 1rem; }
+  }
+</style>
+
+<style>
+  .admin-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: .6rem .9rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    font-family: var(--mono);
+    font-size: .75rem;
+    color: var(--ink-soft);
+  }
+  .admin-bar a { color: var(--free); text-decoration: none; border-bottom: 1px solid currentColor; }
+  .admin-bar a:hover { color: var(--ink); }
+  .admin-bar a:focus-visible { outline: 2px solid var(--free); outline-offset: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="admin-bar" style="margin-bottom:1rem">
+    <span>Admin · signed in as the account owner</span>
+    <a href="/app">Back to the app</a>
+  </div>
+
+  <header>
+    <span class="eyebrow">job-boards.io</span>
+    <h1>Where the jobs come from, and where the key gets spent</h1>
+    <p class="lede">
+      Every source wired into a board, what each one actually returns when measured rather than
+      advertised, and the four places an Anthropic API call is made.
+    </p>
+  </header>
+
+
+  <section id="live">
+    <h2>Right now</h2>
+    <p>Read from the database on load. Counts only — the page answers how the
+      service is being used, not who is using it.</p>
+
+    <div class="cards" id="stat-cards">
+      <div class="card"><h3>Loading…</h3></div>
+    </div>
+
+    <div class="scroll" style="margin-top:1.25rem">
+      <table id="source-table">
+        <thead>
+          <tr><th>Source kind</th><th>Connections</th><th>Jobs contributed</th></tr>
+        </thead>
+        <tbody><tr><td colspan="3">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>The path a job takes</h2>
+    <p>
+      Sources are chosen per board, read all at once, then narrowed by four separate gates before
+      anything lands. Most listings die at the filter: a recent run read <strong>5,991</strong> and
+      admitted <strong>7</strong>.
+    </p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Pipeline from sources through fetch, filter, rank, and admission to the board">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" color="var(--ink-faint)">
+          <text x="8" y="16" fill="var(--ink-faint)">SOURCES</text>
+          <text x="272" y="16" fill="var(--ink-faint)">READ</text>
+          <text x="410" y="16" fill="var(--ink-faint)">NARROW</text>
+          <text x="742" y="16" fill="var(--ink-faint)">BOARD</text>
+        </g>
+
+        <!-- source groups -->
+        <g>
+          <rect x="8" y="30" width="220" height="86" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1"/>
+          <text x="22" y="52" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Company boards</text>
+          <text x="22" y="72" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">greenhouse · lever · ashby</text>
+          <text x="22" y="88" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">smartrecruiters</text>
+          <text x="22" y="106" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">26 seeded employers</text>
+
+          <rect x="8" y="128" width="220" height="86" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1"/>
+          <text x="22" y="150" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Aggregators</text>
+          <text x="22" y="170" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">themuse · weworkremotely</text>
+          <text x="22" y="186" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">jobicy · arbeitnow · remoteok</text>
+          <text x="22" y="204" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--inert)">remotive · himalayas ignore filters</text>
+
+          <rect x="8" y="226" width="220" height="72" rx="6" fill="var(--inert-wash)" stroke="var(--inert)" stroke-width="1" stroke-dasharray="4 3"/>
+          <text x="22" y="248" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Adzuna</text>
+          <text x="22" y="268" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">local · hourly · contract</text>
+          <text x="22" y="286" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--inert)">inert — no key set</text>
+        </g>
+
+        <!-- arrows into fetch -->
+        <g stroke="var(--line)" stroke-width="1.5" fill="none" color="var(--ink-faint)">
+          <path d="M228,73 L268,73 L268,150" marker-end="url(#ar)"/>
+          <path d="M228,171 L268,171" marker-end="url(#ar)"/>
+          <path d="M228,262 L268,262 L268,192" marker-end="url(#ar)" stroke-dasharray="4 3"/>
+        </g>
+
+        <!-- fetch -->
+        <rect x="276" y="140" width="110" height="62" rx="6" fill="var(--surface)" stroke="var(--free)" stroke-width="1.5"/>
+        <text x="331" y="164" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Fetch</text>
+        <text x="331" y="182" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">8 at once</text>
+
+        <g stroke="var(--line)" stroke-width="1.5" fill="none" color="var(--ink-faint)">
+          <path d="M386,171 L416,171" marker-end="url(#ar)"/>
+        </g>
+
+        <!-- narrow gates -->
+        <g>
+          <rect x="424" y="30" width="290" height="56" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+          <text x="440" y="52" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">1 · Dedupe</text>
+          <text x="440" y="70" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">same role at same employer wins once</text>
+
+          <rect x="424" y="94" width="290" height="56" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+          <text x="440" y="116" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">2 · Filter</text>
+          <text x="440" y="134" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">category · synonyms · salary · age · level</text>
+
+          <rect x="424" y="158" width="290" height="56" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+          <text x="440" y="180" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">3 · Rank</text>
+          <text x="440" y="198" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">wrong field capped at 55</text>
+
+          <rect x="424" y="222" width="290" height="56" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1.5"/>
+          <text x="440" y="244" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">4 · Admit</text>
+          <text x="440" y="262" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">score ≥ 60 · best 10 · max 50 held</text>
+        </g>
+
+        <g stroke="var(--line)" stroke-width="1.5" fill="none" color="var(--ink-faint)">
+          <path d="M714,250 L752,250 L752,200" marker-end="url(#ar)"/>
+        </g>
+
+        <!-- board -->
+        <rect x="742" y="128" width="150" height="66" rx="6" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>
+        <text x="817" y="152" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Your board</text>
+        <text x="817" y="172" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">ranked, deduped</text>
+
+        <text x="742" y="230" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">Aggregator links are</text>
+        <text x="742" y="246" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">checked live before</text>
+        <text x="742" y="262" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">they are admitted.</text>
+        <text x="742" y="286" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">Company boards need</text>
+        <text x="742" y="302" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">no check — presence</text>
+        <text x="742" y="318" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">is the proof.</text>
+      </svg>
+    </div>
+
+    <div class="key">
+      <span><i class="swatch" style="background: var(--free)"></i> works, costs nothing</span>
+      <span><i class="swatch" style="background: var(--inert)"></i> inert or ignores its filter</span>
+      <span><i class="swatch" style="background: var(--spend)"></i> spends the API key</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Every source, measured</h2>
+    <p>
+      Advertised behaviour and actual behaviour differ. These are results from calling each one
+      directly, not from documentation.
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Narrows by</th>
+            <th>Status</th>
+            <th>What it actually returned</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name">greenhouse<br>lever<br>ashby<br>smartrecruiters</td>
+            <td>whole company listing</td>
+            <td><span class="tag tag--free">works</span></td>
+            <td>26 seeded employers. Presence in the current listing proves a job is live, so no link check is needed.</td>
+          </tr>
+          <tr>
+            <td class="name">weworkremotely</td>
+            <td>category feed</td>
+            <td><span class="tag tag--free">works</span></td>
+            <td>63 real design roles for a creative board. Genuinely narrows.</td>
+          </tr>
+          <tr>
+            <td class="name">jobicy</td>
+            <td>tag</td>
+            <td><span class="tag tag--free">works</span></td>
+            <td>Its tag filter narrows. Remote only.</td>
+          </tr>
+          <tr>
+            <td class="name">themuse</td>
+            <td>category</td>
+            <td><span class="tag tag--free">partial</span></td>
+            <td>Customer Service, Retail and Education return results. Creative &amp; Design, Editorial and Media return <strong>zero</strong>.</td>
+          </tr>
+          <tr>
+            <td class="name">arbeitnow<br>remoteok</td>
+            <td>nothing</td>
+            <td><span class="tag tag--free">works</span></td>
+            <td>General feeds, filtered entirely on our side.</td>
+          </tr>
+          <tr>
+            <td class="name">remotive<br>himalayas</td>
+            <td>claims category</td>
+            <td><span class="tag tag--inert">ignores it</span></td>
+            <td>Byte-identical results for design, marketing and writing. The category parameter does nothing, so their output is noise on any non-technical board.</td>
+          </tr>
+          <tr>
+            <td class="name">adzuna</td>
+            <td>keyword, salary, contract type, recency</td>
+            <td><span class="tag tag--inert">needs key</span></td>
+            <td>The only source that indexes local, hourly and contract work. Currently returns an error naming the two secrets it needs.</td>
+          </tr>
+          <tr>
+            <td class="name">rss</td>
+            <td>whatever the feed offers</td>
+            <td><span class="tag tag--free">works</span></td>
+            <td>Any feed you add by hand, including Teamtailor company boards.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note">
+      <strong>Not connected, deliberately.</strong> Upwork and LinkedIn prohibit automated access in
+      their terms, and the consequence lands on your account. Craigslist, ProductionHUB and Mandy
+      were tried and all return <span class="tag tag--inert">403</span> to a server.
+    </p>
+  </section>
+
+  <section>
+    <h2>Where the API key is spent</h2>
+    <p>
+      Four call sites, nothing else. Every one is gated by the same daily allowance, and the
+      allowance is claimed <strong>before</strong> the request goes out — so a crash mid-call costs
+      the budget rather than escaping it.
+    </p>
+
+    <div class="figure">
+      <svg viewBox="0 0 900 300" role="img" aria-label="Four call sites gated by a shared daily budget">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <!-- gate -->
+        <rect x="8" y="106" width="150" height="88" rx="6" fill="var(--spend-wash)" stroke="var(--spend)" stroke-width="1.5"/>
+        <text x="83" y="134" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Daily budget</text>
+        <text x="83" y="154" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--spend)">30 calls</text>
+        <text x="83" y="172" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">per account</text>
+
+        <g stroke="var(--spend)" stroke-width="1.5" fill="none" color="var(--spend)">
+          <path d="M158,150 L196,150 L196,44 L236,44" marker-end="url(#ar2)"/>
+          <path d="M196,114 L236,114" marker-end="url(#ar2)"/>
+          <path d="M196,150 L196,184 L236,184" marker-end="url(#ar2)"/>
+          <path d="M196,150 L196,254 L236,254" marker-end="url(#ar2)"/>
+        </g>
+
+        <!-- call sites -->
+        <g>
+          <rect x="240" y="18" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
+          <text x="256" y="40" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Ranking jobs</text>
+          <text x="256" y="58" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">15 per batch · only jobs already scoring ≥ 35</text>
+
+          <rect x="240" y="88" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
+          <text x="256" y="110" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Scouting the web</text>
+          <text x="256" y="128" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">8 searches + 5 page reads · the expensive one</text>
+
+          <rect x="240" y="158" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
+          <text x="256" y="180" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Reading your CV</text>
+          <text x="256" y="198" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">once per upload · low effort</text>
+
+          <rect x="240" y="228" width="330" height="52" rx="6" fill="var(--surface)" stroke="var(--spend)"/>
+          <text x="256" y="250" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Finding employers</text>
+          <text x="256" y="268" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">weekly per board · picks who to watch</text>
+        </g>
+
+        <g stroke="var(--line)" stroke-width="1.5" fill="none" color="var(--ink-faint)">
+          <path d="M570,44 L610,44 L610,140" marker-end="url(#ar2)"/>
+          <path d="M570,114 L610,114" marker-end="url(#ar2)"/>
+          <path d="M570,184 L610,184 L610,160" marker-end="url(#ar2)"/>
+          <path d="M570,254 L610,254 L610,170" marker-end="url(#ar2)"/>
+        </g>
+
+        <rect x="618" y="112" width="130" height="56" rx="6" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>
+        <text x="683" y="136" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">claude-opus-5</text>
+        <text x="683" y="154" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">prompt cached</text>
+
+        <text x="762" y="128" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">No key, or</text>
+        <text x="762" y="144" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">budget spent →</text>
+        <text x="762" y="160" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">built-in scorer</text>
+        <text x="762" y="176" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-faint)">takes over.</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <h3>Ranking jobs</h3>
+        <span class="cost">~1 call per refresh</span>
+        <p>Reads your sentence and scores each posting against it. Jobs the built-in scorer already rates below 35 are never sent — paying to confirm a warehouse role isn't a photography job is the easiest waste to cut.</p>
+      </div>
+      <div class="card">
+        <h3>Scouting the web</h3>
+        <span class="cost">~5–15¢ per run</span>
+        <p>The costly one: every search is billed on top of tokens. Finds organisations to approach directly, for work no job board carries.</p>
+      </div>
+      <div class="card">
+        <h3>Reading your CV</h3>
+        <span class="cost">1 call, on upload</span>
+        <p>Pulls out skills, titles and years. Works without a key too, just less well — the built-in reader handles the common case.</p>
+      </div>
+      <div class="card">
+        <h3>Finding employers</h3>
+        <span class="cost">1 call per board, weekly</span>
+        <p>Decides which companies are worth watching for your criteria, and verifies each has a live job board before connecting it.</p>
+      </div>
+    </div>
+
+    <p class="note">
+      <strong>Nothing breaks without the key.</strong> Every path falls back to the built-in scorer,
+      which is why a missing key was invisible for so long — the board kept working, just worse.
+      That is also why the daily ceiling is enforced rather than advised: an overspend would have no
+      symptom until the bill.
+    </p>
+  </section>
+
+  <footer>
+    Measured 18 August 2026 · figures from live calls, not documentation
+  </footer>
+
+</div>
+
+
+<script>
+  const fmt = (n) => Number(n || 0).toLocaleString();
+  const when = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+
+  function card(title, value, note, tone) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    const h = document.createElement('h3');
+    h.textContent = title;
+    const v = document.createElement('div');
+    v.style.cssText = 'font-family:var(--mono);font-size:1.9rem;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums';
+    if (tone) v.style.color = tone;
+    v.textContent = value;
+    const p = document.createElement('p');
+    p.textContent = note;
+    el.append(h, v, p);
+    return el;
+  }
+
+  (async () => {
+    const cards = document.getElementById('stat-cards');
+    const table = document.querySelector('#source-table tbody');
+    try {
+      const res = await fetch('/api/admin/stats');
+      if (!res.ok) throw new Error('Stats unavailable (' + res.status + ')');
+      const s = await res.json();
+
+      cards.textContent = '';
+      cards.append(
+        card('Accounts', fmt(s.users.total),
+          fmt(s.users.withBoards) + ' built a board · ' + fmt(s.users.verified) + ' verified · ' + fmt(s.users.with2fa) + ' using 2FA'),
+        card('Boards', fmt(s.boards),
+          'First signup ' + when(s.users.firstSignup) + ' · latest ' + when(s.users.latestSignup)),
+        card('Jobs held', fmt(s.jobs.total),
+          fmt(s.jobs.applied) + ' applied to · ' + fmt(s.jobs.modelRanked) + ' ranked by the model'),
+        card('Leads found', fmt(s.leads), 'From scouting the open web'),
+        card('AI calls today', fmt(s.modelToday.calls),
+          fmt(s.modelToday.scored) + ' jobs ranked · 30 per account per day',
+          s.modelToday.calls > 0 ? 'var(--spend)' : undefined)
+      );
+
+      const missing = Object.entries({
+        'AI ranking': s.integrations.aiRanking,
+        'Two-factor': s.integrations.twoFactor,
+        'Email': s.integrations.email,
+        'Adzuna': s.integrations.adzuna,
+        'Cloudflare Access': s.integrations.cloudflareAccess,
+      }).filter(([, on]) => !on).map(([name]) => name);
+
+      cards.append(
+        card('Integrations', String(5 - missing.length) + ' / 5',
+          missing.length ? 'Not configured: ' + missing.join(', ') : 'All configured',
+          missing.length ? 'var(--inert)' : 'var(--free)')
+      );
+
+      table.textContent = '';
+      if (!s.sources.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 3;
+        td.textContent = 'No sources connected yet.';
+        tr.append(td);
+        table.append(tr);
+      }
+      for (const row of s.sources) {
+        const tr = document.createElement('tr');
+        const kind = document.createElement('td');
+        kind.className = 'name';
+        kind.textContent = row.kind;
+        const n = document.createElement('td');
+        n.className = 'num';
+        n.textContent = fmt(row.n);
+        const found = document.createElement('td');
+        found.className = 'num';
+        found.textContent = fmt(row.found);
+        tr.append(kind, n, found);
+        table.append(tr);
+      }
+    } catch (err) {
+      cards.textContent = '';
+      const el = document.createElement('div');
+      el.className = 'card';
+      const h = document.createElement('h3');
+      h.textContent = 'Could not load stats';
+      const p = document.createElement('p');
+      p.textContent = err.message;
+      el.append(h, p);
+      cards.append(el);
+    }
+  })();
+</script>
+
+</body>
+</html>

@@ -25,6 +25,7 @@ import { APP_ROUTES } from './src/routes/app.js';
 import { boardsDueForRefresh, refreshBoard } from './src/ingest.js';
 import { curateBoard, boardsDueForCuration } from './src/curate.js';
 import { runNotifications, applyUnsubscribe } from './src/notify.js';
+import { adminGate, adminStats } from './src/admin.js';
 
 const ROUTES = { ...AUTH_ROUTES, ...APP_ROUTES };
 
@@ -138,6 +139,62 @@ async function handleRequest(request, env, executionCtx) {
   }
 
   await ensureSchema(env);
+
+  // The admin surface. Gated identically whether it is the page or its data,
+  // because a dashboard whose API is open is not gated at all.
+  if (url.pathname === '/admin' || url.pathname === '/api/admin/stats') {
+    const ctx = await buildContext(env, request);
+    const gate = await adminGate(env, request, ctx);
+
+    if (!gate.ok) {
+      // Someone signed out gets sent to sign in - that is an ordinary state, not
+      // a refusal. Anyone else is told nothing: a signed-in non-owner learns
+      // only that the path does not exist, which is the correct amount of
+      // information to give them about somebody else's admin page.
+      // Only the page redirects. An API that answers a signed-out caller with
+      // a redirect is both wrong for the caller and a tell: every other unknown
+      // /api/ path 404s, so a 302 here would confirm this one exists.
+      if (gate.reason === 'signed-out') {
+        if (url.pathname === '/admin') {
+          return Response.redirect(new URL('/app', request.url).toString(), 302);
+        }
+        return notFound('No such endpoint.');
+      }
+      if (gate.reason === 'needs-2fa') {
+        // This is the owner - telling them nothing would be unhelpful and buys
+        // no security, since they can already prove who they are.
+        return htmlPage(
+          {
+            title: 'Two-factor required',
+            heading: 'Turn on two-factor first',
+            body:
+              'The admin page requires a second factor on this account. Open Account, set up two-factor authentication, then come back.',
+            linkHref: '/app',
+            linkLabel: 'Open your account',
+          },
+          403
+        );
+      }
+      if (gate.reason === 'access') {
+        return htmlPage(
+          {
+            title: 'Access required',
+            heading: 'Cloudflare Access could not verify you',
+            body: gate.detail || 'Sign in through Access and try again.',
+            linkHref: '/app',
+            linkLabel: 'Back to the app',
+          },
+          403
+        );
+      }
+      return notFound('No such endpoint.');
+    }
+
+    if (url.pathname === '/api/admin/stats') {
+      return json(await adminStats(env));
+    }
+    return serveAsset(env, request, '/admin.html');
+  }
 
   if (url.pathname.startsWith('/api/')) {
     return handleApi(request, env, executionCtx, url);

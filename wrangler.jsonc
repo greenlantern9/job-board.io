@@ -100,6 +100,15 @@
     // to the running code, and "which Worker am I actually looking at" was the
     // question nothing could answer.
     "WORKER_NAME": "job-boards-io",
+
+    // The only account allowed to see /admin. Not a secret: it is an allowlist
+    // of one, and the address alone grants nothing without the password and
+    // second factor on that account. Unset means nobody, never everybody.
+    //
+    // Optional second lock, added in the dashboard rather than here:
+    // CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD. When both are set, a verified
+    // Cloudflare Access assertion is required as well as the session.
+    "ADMIN_EMAIL": "kyle.kortum@gmail.com",
     "SITE_URL": "https://job-boards.io",
     "NOTIFY_FROM": "alerts@job-boards.io",
     "SCORING_MODEL": "claude-opus-5"
