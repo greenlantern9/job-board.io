@@ -24,7 +24,7 @@ import { AUTH_ROUTES, verifyEmailToken } from './src/routes/auth.js';
 import { APP_ROUTES } from './src/routes/app.js';
 import { boardsDueForRefresh, refreshBoard } from './src/ingest.js';
 import { curateBoard, boardsDueForCuration } from './src/curate.js';
-import { topUpCatalogue } from './src/directory.js';
+import { topUpCatalogue, loadGreenhouseList, classifyBoards } from './src/directory.js';
 import { runNotifications, applyUnsubscribe } from './src/notify.js';
 import { adminGate, adminStats } from './src/admin.js';
 
@@ -338,9 +338,14 @@ async function runCron(env) {
   // impression and left fields nobody had asked for yet completely empty.
   // Filling it here means the slugs are already there when they are wanted.
   try {
+    // Order matters, cheapest first. Loading the published list is local work.
+    // Classifying reads boards we already know about. Only when both are done
+    // does discovery pay to look for boards nobody has listed.
+    await loadGreenhouseList(env);
+    await classifyBoards(env, { selfHost });
     await topUpCatalogue(env, { selfHost });
   } catch (err) {
-    console.error('catalogue top-up failed', err && err.stack ? err.stack : err);
+    console.error('catalogue work failed', err && err.stack ? err.stack : err);
   }
 }
 

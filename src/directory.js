@@ -17,7 +17,8 @@ import { queryAll, queryOne, run, nowIso } from './db.js';
 import { newId } from './crypto.js';
 import { fetchSource, validateSlug, ATS_KINDS } from './sources.js';
 import { reserveCall } from './budget.js';
-import { CATEGORIES, getCategory } from './categories.js';
+import { CATEGORIES, getCategory, inferCategory } from './categories.js';
+import { GREENHOUSE_BOARDS } from './greenhouse-directory.js';
 
 /** Names put forward per discovery run. Each one costs a probe, and probes are
  *  subrequests inside an already-tight budget. */
@@ -124,16 +125,6 @@ export async function remember(env, { kind, identifier, name, category, jobCount
 }
 
 /** Note that a catalogued board returned nothing, so it eventually drops out. */
-export async function noteFailure(env, kind, identifier) {
-  await run(
-    env,
-    `UPDATE company_directory SET failed_streak = failed_streak + 1
-     WHERE kind = ? AND identifier = ?`,
-    kind,
-    identifier
-  );
-}
-
 /** Confirm a slug is real by asking its API for jobs. */
 async function probe(candidate, selfHost) {
   const kind = String(candidate.kind || '').toLowerCase();
@@ -317,6 +308,18 @@ export const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 export async function topUpCatalogue(env, { selfHost } = {}) {
   if (!env.ANTHROPIC_API_KEY) return { skipped: 'no-key' };
 
+  // Never pay to search for boards while unclassified ones are still queued.
+  //
+  // Discovery costs web searches to find a slug. Classification finds the same
+  // thing for the price of a fetch, out of a list that is already on disk. So
+  // long as that backlog exists, buying slugs would be spending money on work
+  // already done.
+  const backlog = await queryOne(
+    env,
+    "SELECT COUNT(*) AS n FROM company_directory WHERE category = ''"
+  );
+  if (backlog && backlog.n > 0) return { skipped: 'classification-backlog', backlog: backlog.n };
+
   const counts = await queryAll(
     env,
     `SELECT category, COUNT(*) AS n FROM company_directory
@@ -359,6 +362,183 @@ export async function topUpCatalogue(env, { selfHost } = {}) {
   );
 
   return { category: target.id, had: target.n, added: result.added.length, searches: result.searches };
+}
+
+
+
+/** Rows written per tick while loading the bulk Greenhouse list. Local work
+ *  against D1, no outbound requests, so this is only about keeping any single
+ *  tick short - the whole list lands in two. */
+const BULK_INSERT_PER_TICK = 2500;
+
+/**
+ * Boards fetched per tick when working out what field they hire for.
+ *
+ * Sized against the Workers subrequest ceiling, which is a hard cap per
+ * invocation rather than a bill: exceed it and the tick fails outright. The
+ * paid plan allows a thousand, and the same tick already spends roughly two
+ * hundred refreshing and curating boards, so five hundred leaves headroom
+ * without leaving throughput on the table.
+ *
+ * The binding constraint is the five-minute cron, not the tick: two hundred
+ * boards took under seven seconds, so the work per tick was never the limit -
+ * how many ticks it takes to get through the list is.
+ */
+const CLASSIFY_PER_TICK = 500;
+
+/** Boards read at once. Unbounded parallelism would open two hundred sockets
+ *  in one breath and get us throttled at the other end for no gain. */
+const CLASSIFY_CONCURRENCY = 20;
+
+/** What the winning field has to clear before it is believed: at least this
+ *  many postings, and this share of the board. A24 was being filed under
+ *  marketing on one vote out of seven. */
+const VOTE_MIN_COUNT = 2;
+const VOTE_MIN_SHARE = 0.15;
+
+/** Bound parameters D1 allows in one statement, minus headroom. Six columns
+ *  per row, so sixteen rows fits. */
+const BULK_ROWS_PER_STATEMENT = 16;
+
+/**
+ * Load the published Greenhouse list into the catalogue, a slice per tick.
+ *
+ * Greenhouse publishes no directory, so every slug used to cost a web search
+ * to discover. A published list supplies thousands at once and removes that
+ * spend for this platform entirely - what it cannot supply is which field each
+ * employer hires for, which is what classifyBoards works out afterwards.
+ *
+ * Entries land with no category on purpose. directoryFor matches on an exact
+ * category, so an unclassified row is invisible to board creation rather than
+ * being offered to every board indiscriminately.
+ */
+export async function loadGreenhouseList(env) {
+  const existing = await queryAll(
+    env,
+    "SELECT identifier FROM company_directory WHERE kind = 'greenhouse'"
+  );
+  const have = new Set(existing.map((row) => row.identifier.toLowerCase()));
+  const missing = GREENHOUSE_BOARDS.filter((board) => !have.has(board.identifier.toLowerCase()));
+  if (!missing.length) return { inserted: 0, remaining: 0 };
+
+  const slice = missing.slice(0, BULK_INSERT_PER_TICK);
+  const now = nowIso();
+  const statements = [];
+  for (let i = 0; i < slice.length; i += BULK_ROWS_PER_STATEMENT) {
+    const chunk = slice.slice(i, i + BULK_ROWS_PER_STATEMENT);
+    const values = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+    const params = [];
+    for (const board of chunk) {
+      params.push(newId('co_'), 'greenhouse', board.identifier, board.name.slice(0, 120), '', now);
+    }
+    statements.push(
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO company_directory
+           (id, kind, identifier, name, category, created_at)
+         VALUES ${values}`
+      ).bind(...params)
+    );
+  }
+
+  await env.DB.batch(statements);
+  return { inserted: slice.length, remaining: missing.length - slice.length };
+}
+
+/**
+ * Work out what field a catalogued board hires for, from the jobs on it.
+ *
+ * Deliberately free: the titles a board is already advertising say what it
+ * hires for far more reliably than its name does, and reading them costs a
+ * fetch rather than a model call. "Acme Corp" tells you nothing; thirty
+ * postings for nurses tell you everything.
+ *
+ * Takes the field with the most postings rather than the first match, since
+ * almost every company has some engineering roles and first-match would file
+ * the entire catalogue under software.
+ */
+export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK } = {}) {
+  const pending = await queryAll(
+    env,
+    `SELECT kind, identifier FROM company_directory
+     WHERE category = '' AND failed_streak < ?
+     LIMIT ?`,
+    FAILED_STREAK_LIMIT,
+    limit
+  );
+  if (!pending.length) return { classified: 0, retired: 0 };
+
+  const readBoard = async (row) => {
+    try {
+      const jobs = await fetchSource({ kind: row.kind, identifier: row.identifier }, { selfHost });
+      if (!jobs.length) return { row, empty: true };
+
+      const votes = new Map();
+      for (const job of jobs) {
+        const id = inferCategory(job.title);
+        votes.set(id, (votes.get(id) || 0) + 1);
+      }
+      // 'other' is the fallback inferCategory returns when nothing matched, so
+      // it should never win over a field that genuinely did.
+      const ranked = [...votes].sort((a, b) => {
+        if (a[0] === 'other') return 1;
+        if (b[0] === 'other') return -1;
+        return b[1] - a[1];
+      });
+      const [winner, count] = ranked[0];
+      // A board whose titles say nothing definite is filed as 'other', which is
+      // true, rather than as whatever scraped a single match. Guessing is worse
+      // than admitting it: 'other' still gets searched, while a wrong field puts
+      // the board in front of the wrong people.
+      const confident =
+        winner !== 'other' && count >= VOTE_MIN_COUNT && count / jobs.length >= VOTE_MIN_SHARE;
+      return { row, category: confident ? winner : 'other', jobCount: jobs.length };
+    } catch {
+      return { row, empty: true };
+    }
+  };
+
+  // Bounded fan-out: a fixed number of workers pulling from a shared cursor.
+  const results = [];
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(CLASSIFY_CONCURRENCY, pending.length) }, async () => {
+      while (cursor < pending.length) {
+        const row = pending[cursor++];
+        results.push(await readBoard(row));
+      }
+    })
+  );
+
+  // One round trip for every update rather than one per board. At two hundred
+  // boards a tick the sequential version spent far longer talking to the
+  // database than it did reading the boards.
+  const now = nowIso();
+  const writes = [];
+  let classified = 0;
+  let retired = 0;
+  for (const result of results) {
+    if (result.empty) {
+      writes.push(
+        env.DB.prepare(
+          `UPDATE company_directory SET failed_streak = failed_streak + 1
+           WHERE kind = ? AND identifier = ?`
+        ).bind(result.row.kind, result.row.identifier)
+      );
+      retired += 1;
+      continue;
+    }
+    writes.push(
+      env.DB.prepare(
+        `UPDATE company_directory
+         SET category = ?, job_count = ?, verified_at = ?, failed_streak = 0
+         WHERE kind = ? AND identifier = ?`
+      ).bind(result.category, result.jobCount, now, result.row.kind, result.row.identifier)
+    );
+    classified += 1;
+  }
+  if (writes.length) await env.DB.batch(writes);
+
+  return { classified, retired };
 }
 
 export { CATEGORIES };

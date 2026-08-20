@@ -15,7 +15,7 @@ const fullExcept = (thin = {}) => {
 
 // A D1 stand-in answering only the queries topUpCatalogue actually issues, so
 // an unexpected one surfaces as a failure rather than passing quietly.
-const fakeDb = ({ counts = {}, attempts = {}, callsUsed = 0 }) => {
+const fakeDb = ({ counts = {}, attempts = {}, callsUsed = 0, backlog = 0 }) => {
   const writes = [];
   return {
     writes,
@@ -33,7 +33,11 @@ const fakeDb = ({ counts = {}, attempts = {}, callsUsed = 0 }) => {
             }
             return { results: [] };
           },
-          first: async () => (/model_usage/.test(sql) ? { calls: callsUsed, jobs_scored: 0 } : null),
+          first: async () => {
+            if (/model_usage/.test(sql)) return { calls: callsUsed, jobs_scored: 0 };
+            if (sql.includes('AS n FROM company_directory')) return { n: backlog };
+            return null;
+          },
           run: async () => {
             writes.push({ sql, params });
             return {};
@@ -106,4 +110,25 @@ test('a run that finds nothing still records the attempt', async () => {
     env.writes.some((w) => /discovery_attempts/.test(w.sql)),
     'an empty-handed run must still leave a record'
   );
+});
+
+test('the published list carries every board with a usable slug', async () => {
+  const { GREENHOUSE_BOARDS } = await import('../src/greenhouse-directory.js');
+  assert.ok(GREENHOUSE_BOARDS.length > 4000, 'the list should be thousands, not dozens');
+  const bad = GREENHOUSE_BOARDS.filter((b) => !/^[A-Za-z0-9_-]+$/.test(b.identifier));
+  assert.deepEqual(bad, [], 'every slug must survive validateSlug');
+  const slugs = new Set(GREENHOUSE_BOARDS.map((b) => b.identifier.toLowerCase()));
+  assert.equal(slugs.size, GREENHOUSE_BOARDS.length, 'no duplicate slugs');
+});
+
+test('paid discovery waits while free classification still has a backlog', async () => {
+  // Buying a slug through web search while an unclassified one sits in the
+  // table is paying for work already done.
+  const env = {
+    ...fakeDb({ counts: fullExcept({ sales: 0 }), backlog: 3200 }),
+    ANTHROPIC_API_KEY: 'k',
+  };
+  const result = await topUpCatalogue(env);
+  assert.equal(result.skipped, 'classification-backlog');
+  assert.equal(result.backlog, 3200);
 });

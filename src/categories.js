@@ -102,7 +102,7 @@ export const CATEGORIES = [
     label: 'Health and care',
     hint: 'Clinical, care, wellbeing',
     match:
-      /\b(nurse|nursing|physician|clinician|therapist|caregiver|medical|mental health|psycholog\w*|counsell?or|paramedic|dentist)\b/i,
+      /\b(nurse|nursing|physician|clinician|therapist|caregiver|medical|mental health|psycholog\w*|counsell?or|paramedic|dentist|veterinar\w*|vet tech\w*|kennel|animal care)\b/i,
     wwr: '',
     jobicy: '',
     muse: 'Healthcare',
@@ -136,11 +136,29 @@ export function isCategory(id) {
  * is usually the subject rather than the job, so a support or care role that
  * happens to mention it must not be read as creative work.
  */
+
+/**
+ * The order categories are tested in, which is deliberately not the order they
+ * are displayed in.
+ *
+ * Trades goes before software because the software pattern accepts a bare
+ * "engineer", and most engineers are not software engineers. An HVAC
+ * manufacturer's board was filing "Field Service Engineer", "Electrical
+ * Engineer" and "Plant Process Engineer" under software - fifty-four of its
+ * hundred and eight postings - purely because software was tested first.
+ *
+ * Keeping the bare "engineer" matters: somebody typing "engineer" into the box
+ * means software, and qualifying the pattern would break that. Testing the
+ * specific trades first fixes the titles without touching the prompt.
+ */
+const PRECEDENCE = ['creative', 'trades', 'care', 'software', 'support', 'marketing', 'sales', 'product', 'teaching'];
+
 export function inferCategory(text) {
   const value = String(text || '');
   if (!value.trim()) return 'other';
-  for (const category of CATEGORIES) {
-    if (category.match && category.match.test(value)) return category.id;
+  for (const id of PRECEDENCE) {
+    const category = getCategory(id);
+    if (category && category.match && category.match.test(value)) return category.id;
   }
   return 'other';
 }
