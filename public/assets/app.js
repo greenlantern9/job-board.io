@@ -452,7 +452,7 @@ async function loadBoards({ keepSelection = true } = {}) {
   localStorage.setItem('jb.board', state.boardId);
 
   renderBoardList();
-  $('#board-settings').hidden = false;
+  showBoardControls(true);
   await loadJobs();
 }
 
@@ -535,11 +535,28 @@ function render() {
   else renderKanban();
 }
 
+/**
+ * Show or hide everything in the header that acts on a board.
+ *
+ * Searching, switching view, refreshing, adding jobs and settings all need a
+ * board to act on, and with no boards they were offered anyway - controls that
+ * either do nothing or raise the question of what they would do. Kept together
+ * because they share one condition, and separately they had already drifted:
+ * settings was hidden while the view toggle beside it was not.
+ */
+function showBoardControls(on) {
+  for (const id of ['#search-tool', '#view-toggle', '#refresh', '#board-settings']) {
+    const el = $(id);
+    if (el) el.hidden = !on;
+  }
+  const host = $('#add-jobs-host');
+  if (host) host.hidden = !on;
+}
+
 function renderEmptyShell() {
   $('#board-name').textContent = 'No boards yet';
   $('#board-stamp').textContent = '';
-  // Settings configures a board, so it has nothing to act on until one exists.
-  $('#board-settings').hidden = true;
+  showBoardControls(false);
   $('#view-list').hidden = true;
   $('#view-board').hidden = true;
   const empty = clear($('#empty'));

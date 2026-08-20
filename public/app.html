@@ -206,12 +206,12 @@
           </div>
 
           <div class="topbar__tools">
-            <label class="search">
+            <label class="search" id="search-tool" hidden>
               <span class="visually-hidden">Search jobs</span>
               <input class="input input--search" id="search" type="search" placeholder="Search…" />
             </label>
 
-            <div class="segmented" role="tablist" aria-label="View">
+            <div class="segmented" role="tablist" aria-label="View" id="view-toggle" hidden>
               <button class="segmented__btn is-on" data-view="list" role="tab" aria-selected="true">
                 List
               </button>
@@ -222,7 +222,7 @@
 
             <span id="add-jobs-host"></span>
             <button class="btn btn--ghost btn--sm" id="board-settings" hidden>Board settings</button>
-            <button class="btn btn--ghost btn--sm" id="refresh">Refresh</button>
+            <button class="btn btn--ghost btn--sm" id="refresh" hidden>Refresh</button>
           </div>
         </header>
 
