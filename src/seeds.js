@@ -90,6 +90,54 @@ export const SEED_COMPANIES = [
   // cover, so seeding it would quietly break that check rather than the seed
   // list being the thing that gives way.
   { kind: 'greenhouse', identifier: 'marqeta', label: 'Marqeta', category: 'software' },
+  // A second probe, weighted to the platforms the first pass barely touched.
+  // Thirty-two of a hundred and seventeen candidates answered with real jobs;
+  // the rest were dropped. Ashby proved much richer than Lever, which is worth
+  // knowing: it is newer, so its customers skew to companies founded recently.
+  //
+  // This pass is also the first to reach health and trades at all, which every
+  // earlier candidate had missed.
+
+  // Technology
+  { kind: 'ashby', identifier: 'harvey', label: 'Harvey', category: 'software' },
+  { kind: 'ashby', identifier: 'sierra', label: 'Sierra', category: 'software' },
+  { kind: 'ashby', identifier: 'decagon', label: 'Decagon', category: 'software' },
+  { kind: 'ashby', identifier: 'perplexity', label: 'Perplexity', category: 'software' },
+  { kind: 'ashby', identifier: 'baseten', label: 'Baseten', category: 'software' },
+  { kind: 'ashby', identifier: 'writer', label: 'Writer', category: 'software' },
+  { kind: 'ashby', identifier: 'sardine', label: 'Sardine', category: 'software' },
+  { kind: 'ashby', identifier: 'watershed', label: 'Watershed', category: 'software' },
+  { kind: 'ashby', identifier: 'gamma', label: 'Gamma', category: 'software' },
+  { kind: 'ashby', identifier: 'modal', label: 'Modal', category: 'software' },
+  { kind: 'ashby', identifier: 'browserbase', label: 'Browserbase', category: 'software' },
+  { kind: 'ashby', identifier: 'unify', label: 'Unify', category: 'software' },
+
+  // Creative, media and design
+  { kind: 'ashby', identifier: 'elevenlabs', label: 'ElevenLabs', category: 'creative' },
+  { kind: 'ashby', identifier: 'synthesia', label: 'Synthesia', category: 'creative' },
+  { kind: 'ashby', identifier: 'suno', label: 'Suno', category: 'creative' },
+  { kind: 'ashby', identifier: 'photoroom', label: 'Photoroom', category: 'creative' },
+  { kind: 'greenhouse', identifier: 'pinterest', label: 'Pinterest', category: 'creative' },
+  { kind: 'greenhouse', identifier: 'crunchyroll', label: 'Crunchyroll', category: 'creative' },
+  { kind: 'greenhouse', identifier: 'ghost', label: 'Ghost', category: 'creative' },
+
+  // Teaching and coaching
+  { kind: 'ashby', identifier: 'speak', label: 'Speak', category: 'teaching' },
+  { kind: 'ashby', identifier: 'multiverse', label: 'Multiverse', category: 'teaching' },
+  { kind: 'greenhouse', identifier: 'guild', label: 'Guild', category: 'teaching' },
+
+  // Health and care
+  { kind: 'greenhouse', identifier: 'onemedical', label: 'One Medical', category: 'care' },
+
+  // Customer service and support
+  { kind: 'greenhouse', identifier: 'intercom', label: 'Intercom', category: 'support' },
+
+  // Trades and field work
+  { kind: 'greenhouse', identifier: 'palmetto', label: 'Palmetto', category: 'trades' },
+
+  // Consumer, retail and logistics
+  { kind: 'lever', identifier: 'gopuff', label: 'Gopuff', category: 'other' },
+  { kind: 'lever', identifier: 'rover', label: 'Rover', category: 'other' },
 ];
 
 /**
