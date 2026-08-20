@@ -6,7 +6,7 @@
 // we keep the heuristic result rather than leaving jobs unscored.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { heuristicScore } from './rank.js';
+import { contextAdjustment, heuristicScore } from './rank.js';
 import { reserveCall, recordUsage, budgetStatus, MODEL_SCORE_FLOOR } from './budget.js';
 
 const BATCH_SIZE = 15;
@@ -125,6 +125,7 @@ function jobDigest(job) {
 }
 
 async function scoreBatchWithClaude(client, model, jobs, { prompt, filters }) {
+  const byExternal = new Map(jobs.map((job) => [String(job.id), job]));
   const criteria = [
     prompt ? `Their criteria, in their words:\n${prompt}` : 'They did not write free-text criteria.',
     filters.keywords && `Required keywords: ${filters.keywords}`,
@@ -182,9 +183,16 @@ async function scoreBatchWithClaude(client, model, jobs, { prompt, filters }) {
     // The schema cannot express numeric bounds, so clamp here.
     const score = Math.max(0, Math.min(100, Math.round(Number(entry.score))));
     if (!entry.id || !Number.isFinite(score)) continue;
+    const job = byExternal.get(String(entry.id));
+    const context = job ? contextAdjustment(job, { filters }) : { delta: 0, notes: [] };
+    const adjusted = Math.max(0, Math.min(100, score + context.delta));
+    const reason = [String(entry.reason || '').slice(0, 200), ...context.notes.slice(0, 2)]
+      .filter(Boolean)
+      .join('; ');
+
     byId.set(String(entry.id), {
-      score,
-      reason: String(entry.reason || '').slice(0, 240),
+      score: adjusted,
+      reason: reason.slice(0, 240),
       scoredBy: model,
     });
   }

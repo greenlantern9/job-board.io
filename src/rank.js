@@ -260,6 +260,62 @@ function payBonus(best) {
   return 0;
 }
 
+/**
+ * What a posting's age, pay and employer are worth, independent of whether it
+ * is the right role.
+ *
+ * The model is asked one question - does this posting match what the person
+ * wrote - and answers it well. It is not asked whether the posting is fresh or
+ * well paid, because those are not things to judge, they are things to read off
+ * the posting. So its answer replaced a heuristic score that had already
+ * weighed them, and a month-old listing came back at 100 alongside one posted
+ * this morning.
+ *
+ * Applied on top of the model's verdict instead. Relevance is its judgement;
+ * this is arithmetic.
+ */
+export function contextAdjustment(job, { filters = {} } = {}) {
+  let delta = 0;
+  const notes = [];
+
+  const days = jobAgeDays(job);
+  if (days !== null) {
+    // Steeper than the ranking curve on purpose. Against a model score that
+    // starts at 100 for anything relevant, a couple of points would not
+    // separate this morning's posting from last month's.
+    let penalty = 0;
+    if (days > 60) penalty = 40;
+    else if (days > 30) penalty = 30;
+    else if (days > 21) penalty = 20;
+    else if (days > 14) penalty = 12;
+    else if (days > 7) penalty = 6;
+    else if (days > 2) penalty = 2;
+    if (penalty > 0) {
+      delta -= penalty;
+      notes.push(
+        days > 60 ? 'over two months old' : days > 30 ? 'over a month old' : `posted ${Math.round(days)} days ago`
+      );
+    }
+  }
+
+  const best = Math.max(job.salaryMax || 0, job.salaryMin || 0);
+  const pay = payBonus(best);
+  if (pay > 0) {
+    delta += pay;
+    if (pay >= 6) notes.push('pay is high for the market');
+  }
+
+  const employerKey = String(job.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (employerKey && NOTABLE.has(employerKey)) {
+    delta += NOTABLE_BONUS;
+    notes.push('well-known employer');
+  }
+
+  if (filters.remoteOnly && job.remote) notes.push('remote');
+
+  return { delta, notes };
+}
+
 export function heuristicScore(job, { prompt = '', filters = {}, profile = null } = {}) {
   const haystack = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
   const titleText = String(job.title || '').toLowerCase();
