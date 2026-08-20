@@ -1,4 +1,5 @@
 import { expandPhrase } from './synonyms.js';
+import { SEED_COMPANIES } from './seeds.js';
 
 // The deterministic ranking heuristic.
 //
@@ -217,6 +218,48 @@ const STOPWORDS = new Set([
  */
 export const WRONG_ROLE_CEILING = 55;
 
+/**
+ * Employers worth recognising, from the curated seed list.
+ *
+ * "Quality company" has no measurement in the data - job counts say size, not
+ * whether anyone wants to work there. The seed list is the one judgement of the
+ * sort already in the repository: a hundred-odd employers picked by hand and
+ * verified against their live boards. It is a narrow signal and deliberately a
+ * small one, enough to break a tie between two equally relevant postings.
+ *
+ * Built once at import: a Set lookup per posting, no query and nothing to wait
+ * for, because this runs against every posting in an ingestion.
+ */
+const NOTABLE = new Set();
+for (const seed of SEED_COMPANIES) {
+  for (const value of [seed.label, seed.identifier]) {
+    const key = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (key) NOTABLE.add(key);
+  }
+}
+
+/** Both of the signals below are bonuses and never penalties.
+ *
+ *  That is the property that keeps them safe. A posting cannot lose its place
+ *  for having no published salary or an employer nobody has heard of - most
+ *  postings have neither - so adding them can reorder a board but can never
+ *  empty one. */
+const PAY_BONUS_MAX = 8;
+const NOTABLE_BONUS = 6;
+
+/** Absolute pay bands, in the currency the posting quoted.
+ *
+ *  Unashamedly rough, and biased toward markets that publish large numbers. A
+ *  coaching board will score zero here and rank on everything else, which is
+ *  the intended behaviour for a bonus: silence, not a penalty. */
+function payBonus(best) {
+  if (best >= 200000) return PAY_BONUS_MAX;
+  if (best >= 150000) return 6;
+  if (best >= 120000) return 4;
+  if (best >= 90000) return 2;
+  return 0;
+}
+
 export function heuristicScore(job, { prompt = '', filters = {}, profile = null } = {}) {
   const haystack = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
   const titleText = String(job.title || '').toLowerCase();
@@ -233,6 +276,7 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
   //    stated role is pushed below the baseline rather than left at it.
   const { phrases, words: criteriaWords } = criteriaTerms(prompt);
   let roleInBodyOnly = false;
+  let roleMissing = false;
 
   if (phrases.length > 0) {
     const best = phrases.find((phrase) => phraseMatches(phrase, titleText));
@@ -247,6 +291,7 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
       reasons.push('role appears in the description, not the title');
     } else {
       score -= 20;
+      roleMissing = true;
       reasons.push('not the role you described');
     }
   }
@@ -294,6 +339,11 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
   const best = Math.max(job.salaryMax || 0, job.salaryMin || 0);
   if (best > 0) {
     score += 5;
+    const pay = payBonus(best);
+    if (pay > 0) {
+      score += pay;
+      if (pay >= 6) reasons.push('pay is high for the market');
+    }
     const floor = Number(filters.minSalary) || 0;
     if (floor > 0 && best >= floor * 1.15) {
       score += 5;
@@ -417,6 +467,12 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
   // down. Without this a search for video work led with software engineering
   // roles that merely mentioned media, which is the single loudest way the
   // board looked broken.
+  const employerKey = String(job.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (employerKey && NOTABLE.has(employerKey)) {
+    score += NOTABLE_BONUS;
+    reasons.push('well-known employer');
+  }
+
   const clash = disciplineClash(job.title, prompt, filters.category);
   if (clash < 0) {
     score -= clash;
@@ -443,6 +499,18 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
   // something else entirely. Body text is corroboration, never identification,
   // so on its own it cannot clear the admission floor.
   if (roleInBodyOnly && clash <= 0) {
+    capped = Math.min(capped, WRONG_ROLE_CEILING);
+  }
+
+  // A posting that is not the role asked for cannot be admitted by being good
+  // in other ways.
+  //
+  // Recency, pay and a recognised employer are worth up to forty points
+  // between them, which was enough to carry a line cook at a famous company
+  // over the admission floor of a programme-management board. Those signals
+  // exist to order postings that already match; they are not evidence that one
+  // does. Relevance is the requirement and the rest is ranking.
+  if (roleMissing) {
     capped = Math.min(capped, WRONG_ROLE_CEILING);
   }
 
