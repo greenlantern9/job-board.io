@@ -132,3 +132,33 @@ test('paid discovery waits while free classification still has a backlog', async
   assert.equal(result.skipped, 'classification-backlog');
   assert.equal(result.backlog, 3200);
 });
+
+test('classification also picks up catalogued boards that have no count yet', async () => {
+  // The regression this guards: seeded boards were written with job_count = 0
+  // and only rows with no category were ever revisited, so they kept the zero.
+  // directoryFor orders on job_count, so once bulk-loaded boards had real
+  // counts, every hand-picked seed sorted below every bulk row with a single
+  // opening and stopped being offered at all.
+  const { classifyBoards } = await import('../src/directory.js');
+  const seen = [];
+  const env = {
+    DB: {
+      prepare: (sql) => {
+        seen.push(sql);
+        return {
+          bind: () => ({
+            all: async () => ({ results: [] }),
+            first: async () => null,
+            run: async () => ({}),
+          }),
+        };
+      },
+    },
+  };
+  await classifyBoards(env, { selfHost: 'example.test' });
+
+  const select = seen.find((sql) => sql.includes('FROM company_directory'));
+  assert.ok(select, 'expected a catalogue query');
+  assert.match(select, /job_count = 0/, 'rows with no count must be revisited');
+  assert.match(select, /category = ''/, 'rows with no field must still be classified');
+});

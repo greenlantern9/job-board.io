@@ -459,10 +459,20 @@ export async function loadGreenhouseList(env) {
  * the entire catalogue under software.
  */
 export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK } = {}) {
+  // Rows needing a field, and rows needing a count.
+  //
+  // Seeded boards were written with job_count = 0 and nothing ever updated
+  // them, because this only ever looked at rows with no category. That was
+  // harmless while the catalogue was small and every row scored zero. Once the
+  // published list arrived and classification gave thousands of boards a real
+  // count, every hand-picked seed sorted below every bulk row with a single
+  // opening - directoryFor orders on job_count - so curated boards stopped
+  // being offered at all and creative searches were served agencywithin
+  // instead of A24.
   const pending = await queryAll(
     env,
-    `SELECT kind, identifier FROM company_directory
-     WHERE category = '' AND failed_streak < ?
+    `SELECT kind, identifier, category FROM company_directory
+     WHERE (category = '' OR job_count = 0) AND failed_streak < ?
      LIMIT ?`,
     FAILED_STREAK_LIMIT,
     limit
@@ -493,7 +503,11 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
       // the board in front of the wrong people.
       const confident =
         winner !== 'other' && count >= VOTE_MIN_COUNT && count / jobs.length >= VOTE_MIN_SHARE;
-      return { row, category: confident ? winner : 'other', jobCount: jobs.length };
+      // A row that already carries a field was placed there deliberately, by
+      // hand or by discovery. This pass is only here to give it a count; it
+      // must not relabel it from whatever happens to be posted this week.
+      const category = row.category || (confident ? winner : 'other');
+      return { row, category, jobCount: jobs.length };
     } catch {
       return { row, empty: true };
     }
