@@ -7,6 +7,7 @@
 // with one click is worth several you have to go research.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { reserveCall, recordUsage } from './budget.js';
 import { fetchSource, validateSlug, ATS_KINDS } from './sources.js';
 
 const MAX_CANDIDATES = 8;
@@ -53,7 +54,7 @@ Rules:
 - The slug is your best guess at their job-board identifier: lowercase, no spaces or punctuation.`;
 
 /** Ask the model for candidates. Throws on refusal or a missing key. */
-async function proposeCompanies(env, { prompt, filters, known }) {
+async function proposeCompanies(env, { prompt, filters, known, userId }) {
   const apiKey = env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     const error = new Error(
@@ -77,6 +78,15 @@ async function proposeCompanies(env, { prompt, filters, known }) {
     .filter(Boolean)
     .join('\n');
 
+  // Budget-gated like every other model call. This one was rate-limited per
+  // user but never counted against the daily allowance, so it could be used to
+  // spend past a cap that was documented as the ceiling.
+  if (userId && !(await reserveCall(env, userId, 0))) {
+    const error = new Error('You have used your model calls for today.');
+    error.code = 'budget';
+    throw error;
+  }
+
   const response = await client.beta.messages.create({
     model: env.SCORING_MODEL || 'claude-opus-5',
     max_tokens: 2000,
@@ -95,6 +105,8 @@ async function proposeCompanies(env, { prompt, filters, known }) {
       },
     ],
   });
+
+  await recordUsage(env, userId, response.usage);
 
   if (response.stop_reason === 'refusal') {
     throw new Error('The model declined to answer that request.');
@@ -149,11 +161,12 @@ async function probe(candidate, selfHost) {
  * `checked` reports how many were proposed, so the UI can say something honest
  * when most of them did not resolve.
  */
-export async function suggestCompanies(env, board, { known = [], selfHost } = {}) {
+export async function suggestCompanies(env, board, { known = [], selfHost, userId } = {}) {
   const candidates = await proposeCompanies(env, {
     prompt: board.prompt || '',
     filters: board.filters || {},
     known,
+    userId,
   });
 
   // Probed concurrently: worst case is MAX_CANDIDATES * PLATFORMS subrequests,

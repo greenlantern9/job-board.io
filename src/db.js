@@ -205,6 +205,9 @@ const STATEMENTS = [
     day TEXT NOT NULL,
     calls INTEGER NOT NULL DEFAULT 0,
     jobs_scored INTEGER NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, day)
   )`,
@@ -252,6 +255,12 @@ const STATEMENTS = [
  * error is the expected outcome on every deploy after the first.
  */
 const MIGRATIONS = [
+  // What each model call actually consumed. The table counted calls from the
+  // start but never tokens, so the only answer to "what is this costing" was
+  // arithmetic over the payload caps - an estimate nobody could check.
+  `ALTER TABLE model_usage ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE model_usage ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE model_usage ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0`,
   // Sources the system chose, versus ones the user added by hand. Curation only
   // ever prunes its own picks.
   `ALTER TABLE sources ADD COLUMN auto INTEGER NOT NULL DEFAULT 0`,

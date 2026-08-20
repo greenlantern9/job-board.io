@@ -12,7 +12,7 @@
 // a disclaimer.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { reserveCall } from './budget.js';
+import { reserveCall, recordUsage } from './budget.js';
 import { queryAll, run, nowIso } from './db.js';
 import { newId } from './crypto.js';
 import { safeExternalUrl } from './sources.js';
@@ -169,6 +169,10 @@ export async function scoutLeads(env, { userId, prompt, location = '', profile =
         system: SYSTEM,
         messages,
       });
+
+      // Inside the loop: a paused turn is resumed with a fresh request, and
+      // each one is billed separately.
+      await recordUsage(env, userId, response.usage);
 
       searches += response.content.filter(
         (block) => block.type === 'server_tool_use' && block.name === 'web_search'

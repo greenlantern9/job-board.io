@@ -16,7 +16,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { queryAll, queryOne, run, nowIso } from './db.js';
 import { newId } from './crypto.js';
 import { fetchSource, validateSlug, ATS_KINDS } from './sources.js';
-import { reserveCall } from './budget.js';
+import { reserveCall, recordUsage } from './budget.js';
 import { CATEGORIES, getCategory, inferCategory } from './categories.js';
 import { GREENHOUSE_BOARDS } from './greenhouse-directory.js';
 
@@ -212,6 +212,8 @@ export async function discoverCompanies(env, { userId, category, prompt, selfHos
   } catch (err) {
     return { added: [], searches: 0, reason: err.message };
   }
+
+  await recordUsage(env, userId, response.usage);
 
   const searches = response.content.filter(
     (block) => block.type === 'server_tool_use' && block.name === 'web_search'

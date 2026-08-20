@@ -7,7 +7,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { heuristicScore } from './rank.js';
-import { reserveCall, budgetStatus, MODEL_SCORE_FLOOR } from './budget.js';
+import { reserveCall, recordUsage, budgetStatus, MODEL_SCORE_FLOOR } from './budget.js';
 
 const BATCH_SIZE = 15;
 const MAX_BATCHES_PER_RUN = 4; // bounds cost and CPU time for one cron tick
@@ -72,7 +72,7 @@ const CV_SCHEMA = {
  * profile drives what the user is shown, and a profile containing things they
  * did not write is worse than no profile at all.
  */
-export async function parseCvWithModel(env, text) {
+export async function parseCvWithModel(env, text, userId) {
   const apiKey = env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('no API key configured');
 
@@ -89,6 +89,8 @@ export async function parseCvWithModel(env, text) {
       'zero. This becomes the candidate profile, and inventing anything in it misrepresents a real person.',
     messages: [{ role: 'user', content: `CV text:\n\n${text}` }],
   });
+
+  await recordUsage(env, userId, response.usage);
 
   if (response.stop_reason === 'refusal') throw new Error('the model declined to read that text');
   const block = response.content.find((b) => b.type === 'text');
@@ -186,7 +188,7 @@ async function scoreBatchWithClaude(client, model, jobs, { prompt, filters }) {
       scoredBy: model,
     });
   }
-  return byId;
+  return { scores: byId, usage: response.usage };
 }
 
 /**
@@ -239,7 +241,10 @@ export async function scoreJobs(env, jobs, board, { profile = null } = {}) {
       break;
     }
     try {
-      const scored = await scoreBatchWithClaude(client, model, batch, context);
+      const { scores: scored, usage } = await scoreBatchWithClaude(client, model, batch, context);
+      // Recorded per batch rather than per refresh: a run that fails partway
+      // still bills for the batches that completed, so that is what is stored.
+      await recordUsage(env, board.user_id, usage);
       for (const [id, value] of scored) {
         if (results.has(id)) {
           results.set(id, value);

@@ -310,7 +310,7 @@ async function parseProfile(request, env, ctx) {
   }
 
   try {
-    const parsed = await parseCvWithModel(env, text);
+    const parsed = await parseCvWithModel(env, text, ctx.user.id);
     return json({ ok: true, parsedBy: env.SCORING_MODEL || 'claude-opus-5', profile: { ...heuristic, ...parsed } });
   } catch (err) {
     // Falling back is better than failing: the heuristic result is still usable.
@@ -663,6 +663,7 @@ async function suggestSources(request, env, ctx) {
   try {
     const result = await suggestCompanies(env, board, {
       known,
+      userId: ctx.user.id,
       selfHost: new URL(request.url).hostname,
     });
     return json({ ok: true, ...result });

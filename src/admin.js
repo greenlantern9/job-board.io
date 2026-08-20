@@ -17,6 +17,7 @@
 // path that reaches the Worker without passing through Access.
 
 import { queryOne } from './db.js';
+import { estimateCost } from './budget.js';
 
 /** Verified JWKS, cached per team domain for the process lifetime of the
  *  isolate. Key rotation is infrequent and a stale key fails closed. */
@@ -164,9 +165,20 @@ export async function adminStats(env) {
   );
   const leads = await one(`SELECT COUNT(*) AS total FROM leads`);
   const today = await one(
-    `SELECT COALESCE(SUM(calls), 0) AS calls, COALESCE(SUM(jobs_scored), 0) AS scored
+    `SELECT COALESCE(SUM(calls), 0) AS calls,
+            COALESCE(SUM(jobs_scored), 0) AS scored,
+            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens
      FROM model_usage WHERE day = ?`,
     new Date().toISOString().slice(0, 10)
+  );
+  const allTime = await one(
+    `SELECT COALESCE(SUM(calls), 0) AS calls,
+            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens
+     FROM model_usage`
   );
   const sources = await queryAllSafe(
     env,
@@ -209,7 +221,32 @@ export async function adminStats(env) {
       modelRanked: jobs.model_ranked || 0,
     },
     leads: leads.total || 0,
-    modelToday: { calls: today.calls || 0, scored: today.scored || 0 },
+    modelToday: {
+      calls: today.calls || 0,
+      scored: today.scored || 0,
+      inputTokens: today.input_tokens || 0,
+      outputTokens: today.output_tokens || 0,
+      cacheReadTokens: today.cache_read_tokens || 0,
+      cost: estimateCost(
+        {
+          inputTokens: today.input_tokens || 0,
+          outputTokens: today.output_tokens || 0,
+          cacheReadTokens: today.cache_read_tokens || 0,
+        },
+        env.SCORING_MODEL || 'claude-opus-5'
+      ),
+    },
+    modelAllTime: {
+      calls: allTime.calls || 0,
+      cost: estimateCost(
+        {
+          inputTokens: allTime.input_tokens || 0,
+          outputTokens: allTime.output_tokens || 0,
+          cacheReadTokens: allTime.cache_read_tokens || 0,
+        },
+        env.SCORING_MODEL || 'claude-opus-5'
+      ),
+    },
     sources,
     catalogue: {
       byPlatform: catalogue,
