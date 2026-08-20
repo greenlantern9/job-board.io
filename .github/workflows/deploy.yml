@@ -54,6 +54,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Stamp the commit being shipped. This has to happen here rather than in
+      # the npm deploy script, because wrangler-action invokes wrangler
+      # directly and never runs it - which had production reporting the commit
+      # of whichever machine last stamped the file by hand.
+      - run: node scripts/stamp-version.mjs
       # Third-party actions run in the same job as the credential and can read
       # its environment. `@v3` is a mutable tag: hardening step is to pin this
       # to a full commit SHA and let Dependabot bump it.

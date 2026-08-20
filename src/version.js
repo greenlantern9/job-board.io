@@ -1,2 +1,6 @@
-// GENERATED at deploy time by scripts/stamp-version.mjs - do not hand-edit.
-export const VERSION = {"commit":"e6756ef","dirty":true,"stamped":"2026-08-20T13:27:04.074Z"};
+// Placeholder. Overwritten by scripts/stamp-version.mjs during deploy.
+//
+// Committed rather than ignored only because worker.js imports it statically,
+// so a fresh clone has to be able to resolve it. The value here is never the
+// one in production - CI restamps it from the commit it is actually shipping.
+export const VERSION = { commit: 'dev', dirty: true, stamped: '' };
