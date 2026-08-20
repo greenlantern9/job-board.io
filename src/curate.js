@@ -16,7 +16,7 @@
 import { suggestCompanies } from './suggest.js';
 import { queryAll, queryOne, run, nowIso, parseJson } from './db.js';
 import { newId } from './crypto.js';
-import { fetchSource, AGGREGATOR_KINDS, ATS_KINDS } from './sources.js';
+import { fetchSource, sourceConfigured, AGGREGATOR_KINDS, ATS_KINDS } from './sources.js';
 import { extractRolePhrases } from './intent.js';
 import { SEED_COMPANIES, SEED_LIMIT } from './seeds.js';
 import { directoryFor, discoverCompanies, seedDirectory } from './directory.js';
@@ -86,6 +86,10 @@ async function ensureAggregators(env, board, existing) {
   if (!query) return 0;
 
   for (const kind of AGGREGATOR_KINDS) {
+    // A source without its credentials can only fail, and a failure the reader
+    // cannot act on is noise on every single refresh.
+    if (!sourceConfigured(kind, env)) continue;
+
     const current = existing.find((s) => s.kind === kind);
     if (current) {
       // Criteria drift otherwise leaves the aggregators searching for whatever

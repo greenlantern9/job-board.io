@@ -224,10 +224,16 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     category: activeFilters.category,
   });
 
+  // Counted here and reported once, below, rather than one line per source.
+  // A refresh reads dozens of them, and a reader handed a list of internal
+  // slugs and stack-adjacent text cannot do anything with it - the detail that
+  // matters for debugging is kept on the source row either way.
+  let transientFailures = 0;
+
   for (const { source, jobs, error } of fetched) {
     if (error) {
       summary.sourcesFailed++;
-      summary.warnings.push(`${source.label || source.identifier}: ${error.message}`);
+      if (error.transient) transientFailures++;
       await run(
         env,
         `UPDATE sources SET last_status = 'error', last_error = ?, last_fetched = ? WHERE id = ?`,
@@ -314,6 +320,14 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
   // available then, so today's near-miss can win tomorrow if nothing better
   // turns up. A few extra are carried through link checking so that a dead one
   // does not cost a slot.
+  if (transientFailures > 0) {
+    summary.warnings.push(
+      transientFailures === 1
+        ? 'One source was slow to respond and was skipped this time.'
+        : `${transientFailures} sources were slow to respond and were skipped this time.`
+    );
+  }
+
   const activeBefore = await activeJobCount(env, board.id);
   const slots = Math.max(0, Math.min(batchSize, MAX_ACTIVE_JOBS - activeBefore));
   summary.activeBefore = activeBefore;

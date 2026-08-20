@@ -87,8 +87,44 @@ const SYSTEM = [
 ].join('\n');
 
 /** Companies already in the catalogue for a category, best-yielding first. */
+/**
+ * Share of a board's company sources that come from outside its own field.
+ *
+ * Fields route sources so that a coaching search is not served engineering
+ * boards, which is right for the postings but wrong for the employers: plenty
+ * of roles live inside an industry that is not their own discipline. Measured
+ * on live boards, eight product-classified employers carried 249 postings and
+ * eight technical-programme roles between them, while seven software-classified
+ * employers carried 1,242 postings and thirty-seven - so a programme-management
+ * search routed purely to product was looking in the smaller half.
+ *
+ * Reserving part of the list for the largest employers regardless of field
+ * costs nothing in precision. Out-of-field postings are capped below the
+ * admission floor, so the extra breadth can only add jobs that genuinely match
+ * - it cannot pad the board with the wrong discipline.
+ */
+const CROSS_FIELD_SHARE = 0.4;
+
 export async function directoryFor(env, category, { limit = 20, exclude = [] } = {}) {
-  const rows = await queryAll(
+  const skip = new Set(exclude.map((e) => `${e.kind}:${e.identifier}`.toLowerCase()));
+  const picked = [];
+  const seen = new Set();
+
+  const add = (rows, max) => {
+    for (const row of rows) {
+      if (picked.length >= limit || max <= 0) break;
+      const key = `${row.kind}:${row.identifier}`.toLowerCase();
+      if (skip.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      picked.push(row);
+      max -= 1;
+    }
+  };
+
+  const crossField = Math.max(1, Math.round(limit * CROSS_FIELD_SHARE));
+  const inField = limit - crossField;
+
+  const own = await queryAll(
     env,
     `SELECT kind, identifier, name, job_count FROM company_directory
      WHERE category = ? AND failed_streak < ?
@@ -96,10 +132,40 @@ export async function directoryFor(env, category, { limit = 20, exclude = [] } =
      LIMIT ?`,
     category,
     FAILED_STREAK_LIMIT,
-    limit + exclude.length
+    inField + exclude.length
   );
-  const skip = new Set(exclude.map((e) => `${e.kind}:${e.identifier}`.toLowerCase()));
-  return rows.filter((row) => !skip.has(`${row.kind}:${row.identifier}`.toLowerCase())).slice(0, limit);
+  add(own, inField);
+
+  // The biggest employers in the catalogue, whatever they are filed under.
+  // These are where cross-cutting roles actually sit.
+  const largest = await queryAll(
+    env,
+    `SELECT kind, identifier, name, job_count FROM company_directory
+     WHERE category <> '' AND failed_streak < ?
+     ORDER BY job_count DESC, verified_at DESC
+     LIMIT ?`,
+    FAILED_STREAK_LIMIT,
+    limit + exclude.length + picked.length
+  );
+  add(largest, limit - picked.length);
+
+  // Anything still missing comes from the board's own field, which may have
+  // more to give now that the cross-field slots are filled.
+  if (picked.length < limit) {
+    const more = await queryAll(
+      env,
+      `SELECT kind, identifier, name, job_count FROM company_directory
+       WHERE category = ? AND failed_streak < ?
+       ORDER BY job_count DESC, verified_at DESC
+       LIMIT ?`,
+      category,
+      FAILED_STREAK_LIMIT,
+      limit + exclude.length
+    );
+    add(more, limit - picked.length);
+  }
+
+  return picked;
 }
 
 /** Record a verified board so nobody pays to find it again. */

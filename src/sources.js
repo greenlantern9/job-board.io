@@ -9,7 +9,13 @@ import { detectSeniorityLevel } from './rank.js';
 import { expandPhrase } from './synonyms.js';
 import { categoryFor } from './categories.js';
 
-const FETCH_TIMEOUT_MS = 10000;
+const FETCH_TIMEOUT_MS = 15000;
+
+/** A second, shorter attempt after a timeout. Boards were being dropped for a
+ *  single slow response while twenty other fetches were in flight against the
+ *  same host, which is a stall rather than a failure. Kept short so one bad
+ *  source cannot hold up a refresh somebody is waiting on. */
+const RETRY_TIMEOUT_MS = 8000;
 const MAX_DESCRIPTION_CHARS = 4000;
 const USER_AGENT = 'job-boards.io/1.0 (+https://job-boards.io)';
 
@@ -35,6 +41,19 @@ export const ATS_KINDS = ['greenhouse', 'lever', 'ashby', 'smartrecruiters'];
 
 export class SourceError extends Error {}
 
+/**
+ * Whether a source kind has what it needs to run at all.
+ *
+ * Used before connecting one, so a board is never given a source that can only
+ * fail. Every board used to get an Adzuna connector whether or not the keys
+ * existed, which meant every refresh produced a warning naming two secrets the
+ * reader has no way to set.
+ */
+export function sourceConfigured(kind, env) {
+  if (kind === 'adzuna') return Boolean(env && env.ADZUNA_APP_ID && env.ADZUNA_APP_KEY);
+  return true;
+}
+
 async function fetchJson(url) {
   const res = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new SourceError(`${res.status} ${res.statusText}`);
@@ -45,9 +64,9 @@ async function fetchJson(url) {
   }
 }
 
-async function fetchWithTimeout(url, init = {}) {
+async function attempt(url, init, timeoutMs) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       ...init,
@@ -55,11 +74,32 @@ async function fetchWithTimeout(url, init = {}) {
       headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) },
       redirect: 'follow',
     });
-  } catch (err) {
-    if (err.name === 'AbortError') throw new SourceError('Source timed out after 10s');
-    throw new SourceError(err.message || 'Network error');
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function fetchWithTimeout(url, init = {}) {
+  try {
+    return await attempt(url, init, FETCH_TIMEOUT_MS);
+  } catch (err) {
+    if (err.name !== 'AbortError') throw new SourceError(err.message || 'Network error');
+    // One more go. The first attempt competes with every other fetch in the
+    // same refresh; the second usually has the road to itself.
+    try {
+      return await attempt(url, init, RETRY_TIMEOUT_MS);
+    } catch (retryErr) {
+      if (retryErr.name !== 'AbortError') {
+        throw new SourceError(retryErr.message || 'Network error');
+      }
+      const timedOut = new SourceError(
+        `Source did not respond within ${Math.round((FETCH_TIMEOUT_MS + RETRY_TIMEOUT_MS) / 1000)}s`
+      );
+      // Transient by nature: worth recording against the source, not worth
+      // telling the reader about.
+      timedOut.transient = true;
+      throw timedOut;
+    }
   }
 }
 
@@ -1002,7 +1042,12 @@ async function fetchAdzuna(query, env) {
   const appId = env && env.ADZUNA_APP_ID;
   const appKey = env && env.ADZUNA_APP_KEY;
   if (!appId || !appKey) {
-    throw new SourceError('Adzuna needs ADZUNA_APP_ID and ADZUNA_APP_KEY set as Worker secrets.');
+    // Deliberately says nothing about which service or which secrets. This
+    // reaches ordinary users, who cannot set a Worker secret and should not be
+    // shown the name of one.
+    const error = new SourceError('This source is not configured.');
+    error.unconfigured = true;
+    throw error;
   }
 
   // The identifier carries "query @ country", so one connector serves any
