@@ -174,6 +174,25 @@ export async function adminStats(env) {
      FROM sources GROUP BY kind ORDER BY n DESC`
   );
 
+  // The shared company catalogue, which had no reporting at all until now -
+  // there was no way to answer "is the Greenhouse list loaded yet?" without
+  // database access. Classified and unclassified are counted separately
+  // because they mean different things: a board with no category is in the
+  // table but reaches nobody, since directoryFor matches an exact category.
+  const catalogue = await queryAllSafe(
+    env,
+    `SELECT kind,
+            COUNT(*) AS n,
+            SUM(CASE WHEN category = '' THEN 1 ELSE 0 END) AS unclassified,
+            SUM(CASE WHEN failed_streak >= 3 THEN 1 ELSE 0 END) AS retired
+     FROM company_directory GROUP BY kind ORDER BY n DESC`
+  );
+  const catalogueFields = await queryAllSafe(
+    env,
+    `SELECT category, COUNT(*) AS n FROM company_directory
+     WHERE category <> '' GROUP BY category ORDER BY n DESC`
+  );
+
   return {
     users: {
       total: users.total || 0,
@@ -192,6 +211,12 @@ export async function adminStats(env) {
     leads: leads.total || 0,
     modelToday: { calls: today.calls || 0, scored: today.scored || 0 },
     sources,
+    catalogue: {
+      byPlatform: catalogue,
+      byField: catalogueFields,
+      total: catalogue.reduce((sum, row) => sum + (row.n || 0), 0),
+      unclassified: catalogue.reduce((sum, row) => sum + (row.unclassified || 0), 0),
+    },
     integrations: {
       aiRanking: Boolean(env.ANTHROPIC_API_KEY),
       twoFactor: Boolean(env.TOTP_ENC_KEY),

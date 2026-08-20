@@ -278,6 +278,19 @@
         <tbody><tr><td colspan="3">Loading…</td></tr></tbody>
       </table>
     </div>
+
+    <h3 style="margin-top:1.5rem">The company catalogue</h3>
+    <p>Employer boards known to the service, shared by every user. A board with
+      no field yet is in the table but reaches nobody, because sources are
+      matched to a board by exact field.</p>
+    <div class="scroll">
+      <table id="catalogue-table">
+        <thead>
+          <tr><th>Platform</th><th>Boards</th><th>Awaiting a field</th><th>Retired</th></tr>
+        </thead>
+        <tbody><tr><td colspan="4">Loading…</td></tr></tbody>
+      </table>
+    </div>
   </section>
 
   <section>
@@ -681,6 +694,37 @@
           missing.length ? 'Not configured: ' + missing.join(', ') : 'All configured',
           missing.length ? 'var(--inert)' : 'var(--free)')
       );
+
+      const cat = s.catalogue || { total: 0, unclassified: 0, byPlatform: [], byField: [] };
+      const ready = cat.total - cat.unclassified;
+      cards.append(
+        card('Catalogue', fmt(cat.total),
+          cat.unclassified > 0
+            ? fmt(ready) + ' ready · ' + fmt(cat.unclassified) + ' still being classified'
+            : fmt(ready) + ' ready · every board classified',
+          cat.unclassified > 0 ? 'var(--spend)' : 'var(--free)')
+      );
+
+      const catBody = document.querySelector('#catalogue-table tbody');
+      catBody.textContent = '';
+      if (!cat.byPlatform.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.textContent = 'Catalogue is empty.';
+        tr.append(td);
+        catBody.append(tr);
+      }
+      for (const row of cat.byPlatform) {
+        const tr = document.createElement('tr');
+        for (const [value, cls] of [[row.kind, 'name'], [fmt(row.n), 'num'], [fmt(row.unclassified), 'num'], [fmt(row.retired), 'num']]) {
+          const td = document.createElement('td');
+          td.className = cls;
+          td.textContent = value;
+          tr.append(td);
+        }
+        catBody.append(tr);
+      }
 
       table.textContent = '';
       if (!s.sources.length) {
