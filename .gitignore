@@ -4,3 +4,8 @@ node_modules/
 .env
 *.log
 .DS_Store
+
+# Scratch files from investigation runs.
+_*
+!_headers
+!_redirects
