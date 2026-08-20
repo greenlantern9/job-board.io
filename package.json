@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "node scripts/stamp-version.mjs && wrangler deploy",
     "test": "node --test",
     "test:e2e": "node scripts/integration.mjs",
     "db:init": "wrangler d1 execute job-board --remote --file=./schema.sql",

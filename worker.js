@@ -25,6 +25,7 @@ import { APP_ROUTES } from './src/routes/app.js';
 import { boardsDueForRefresh, refreshBoard } from './src/ingest.js';
 import { curateBoard, boardsDueForCuration } from './src/curate.js';
 import { topUpCatalogue, loadGreenhouseList, classifyBoards } from './src/directory.js';
+import { VERSION } from './src/version.js';
 import { runNotifications, applyUnsubscribe } from './src/notify.js';
 import { adminGate, adminStats } from './src/admin.js';
 
@@ -238,6 +239,9 @@ async function handleRequest(request, env, executionCtx) {
     return json({
       ok: true,
       worker: env.WORKER_NAME || '(unset - deploy has not run since this was added)',
+      // Which build is actually answering. Says nothing secret, and settles
+      // "did my deploy land?" without guessing from behaviour.
+      version: VERSION,
       site: env.SITE_URL || '',
       features: {
         aiRanking: Boolean(env.ANTHROPIC_API_KEY),
