@@ -1264,7 +1264,10 @@ function openBoardEditor(existing) {
   const locations = h('input', { class: 'input', value: filters.locations || '', placeholder: 'new york, london' });
   const minSalary = h('input', { class: 'input', type: 'number', min: '0', step: '5000', value: String(filters.minSalary || 0) });
   const remoteOnly = h('input', { type: 'checkbox', checked: Boolean(filters.remoteOnly) });
-  const scoutToggle = h('input', { type: 'checkbox', checked: true });
+  // Off by default: it spends money, and it now sits inside a disclosure that
+  // is closed when a board is created. A default charge behind a panel nobody
+  // opened is not a default anyone chose.
+  const scoutToggle = h('input', { type: 'checkbox' });
   const category = h(
     'select',
     { class: 'input' },

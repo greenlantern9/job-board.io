@@ -440,11 +440,15 @@ async function createBoard(request, env, ctx) {
   // Connecting sources is not the user's job. Discovery and the first pull run
   // in the background so the board is useful by the time they look at it,
   // rather than presenting an empty screen and a setup task.
-  // Scouting the open web is opt-out rather than opt-in, because for whole
-  // categories of work - photography, events, coaching, trades - the job boards
-  // hold nothing and the leads are the entire product. It costs real money, so
-  // the form says so and the flag is honoured here rather than assumed.
-  const alsoScout = body.scout !== false;
+  // Scouting the open web is opt-in, and has to be asked for explicitly.
+  //
+  // It earns its keep for work the job boards do not carry - photography,
+  // events, coaching, trades - where the leads are the entire product. But it
+  // costs real money, and it now sits inside a disclosure that is closed when a
+  // board is created, so nobody should be charged for it without having chosen
+  // it. Written as "!== false" this took an absent field as consent, which made
+  // any caller that simply did not mention scouting pay for it.
+  const alsoScout = body.scout === true;
 
   ctx.waitUntil(
     (async () => {
