@@ -138,6 +138,64 @@ export const SEED_COMPANIES = [
   // Consumer, retail and logistics
   { kind: 'lever', identifier: 'gopuff', label: 'Gopuff', category: 'other' },
   { kind: 'lever', identifier: 'rover', label: 'Rover', category: 'other' },
+  // A third pass, aimed squarely at the fields the catalogue was thinnest in.
+  // Thirty-six of a hundred and eighteen answered, and it is the pass that
+  // finally reached marketing, sales and product - all three of which had no
+  // company boards at all, so those searches were running on aggregators alone.
+  //
+  // Anything listing a single open role was skipped: one job does not justify a
+  // source slot that costs a request on every refresh.
+
+  // Health and care
+  { kind: 'greenhouse', identifier: 'zocdoc', label: 'Zocdoc', category: 'care' },
+  { kind: 'greenhouse', identifier: 'cortica', label: 'Cortica', category: 'care' },
+  { kind: 'ashby', identifier: 'abridge', label: 'Abridge', category: 'care' },
+  { kind: 'greenhouse', identifier: 'komodohealth', label: 'Komodo Health', category: 'care' },
+  { kind: 'greenhouse', identifier: 'omadahealth', label: 'Omada Health', category: 'care' },
+  { kind: 'ashby', identifier: 'superpower', label: 'Superpower', category: 'care' },
+  { kind: 'greenhouse', identifier: 'carrotfertility', label: 'Carrot Fertility', category: 'care' },
+  { kind: 'greenhouse', identifier: 'modernhealth', label: 'Modern Health', category: 'care' },
+  { kind: 'greenhouse', identifier: 'parsleyhealth', label: 'Parsley Health', category: 'care' },
+  { kind: 'ashby', identifier: 'openevidence', label: 'OpenEvidence', category: 'care' },
+
+  // Creative, media and design
+  { kind: 'greenhouse', identifier: 'sothebys', label: "Sotheby's", category: 'creative' },
+  { kind: 'ashby', identifier: 'pika', label: 'Pika', category: 'creative' },
+  { kind: 'ashby', identifier: 'krea', label: 'Krea', category: 'creative' },
+  { kind: 'ashby', identifier: 'playbook', label: 'Playbook', category: 'creative' },
+  { kind: 'ashby', identifier: 'recraft', label: 'Recraft', category: 'creative' },
+
+  // Marketing and writing
+  { kind: 'greenhouse', identifier: 'braze', label: 'Braze', category: 'marketing' },
+  { kind: 'greenhouse', identifier: 'klaviyo', label: 'Klaviyo', category: 'marketing' },
+  { kind: 'greenhouse', identifier: 'later', label: 'Later', category: 'marketing' },
+  { kind: 'greenhouse', identifier: 'iterable', label: 'Iterable', category: 'marketing' },
+  { kind: 'greenhouse', identifier: 'hootsuite', label: 'Hootsuite', category: 'marketing' },
+
+  // Product and programme
+  { kind: 'greenhouse', identifier: 'mixpanel', label: 'Mixpanel', category: 'product' },
+  { kind: 'greenhouse', identifier: 'launchdarkly', label: 'LaunchDarkly', category: 'product' },
+  { kind: 'greenhouse', identifier: 'pendo', label: 'Pendo', category: 'product' },
+  { kind: 'greenhouse', identifier: 'amplitude', label: 'Amplitude', category: 'product' },
+
+  // Sales and business development
+  { kind: 'greenhouse', identifier: 'zoominfo', label: 'ZoomInfo', category: 'sales' },
+  { kind: 'ashby', identifier: 'attio', label: 'Attio', category: 'sales' },
+  { kind: 'greenhouse', identifier: 'salesloft', label: 'Salesloft', category: 'sales' },
+
+  // Customer service and support
+  { kind: 'ashby', identifier: 'pylon', label: 'Pylon', category: 'support' },
+  { kind: 'ashby', identifier: 'plain', label: 'Plain', category: 'support' },
+  { kind: 'ashby', identifier: 'lorikeet', label: 'Lorikeet', category: 'support' },
+
+  // Teaching and coaching
+  { kind: 'greenhouse', identifier: 'udemy', label: 'Udemy', category: 'teaching' },
+  { kind: 'greenhouse', identifier: '2u', label: '2U', category: 'teaching' },
+
+  // Trades, energy and field work
+  { kind: 'greenhouse', identifier: 'redwoodmaterials', label: 'Redwood Materials', category: 'trades' },
+  { kind: 'ashby', identifier: 'gradient', label: 'Gradient', category: 'trades' },
+  { kind: 'ashby', identifier: 'terra', label: 'Terra', category: 'trades' },
 ];
 
 /**

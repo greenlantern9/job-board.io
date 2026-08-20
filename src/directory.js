@@ -286,4 +286,79 @@ export async function seedDirectory(env, seeds) {
   return missing.length;
 }
 
+
+
+/**
+ * How many company boards a field should hold before it stops being topped up.
+ *
+ * The point of a target is that this finishes. Growing the catalogue on a timer
+ * with no end would bill for searches forever; growing it to a number means the
+ * work is bounded, mostly happens once, and then costs nothing. Fifteen is
+ * comfortably more than the twelve a single board connects.
+ */
+export const CATALOGUE_TARGET = 15;
+
+/** How long before a field is worth searching again. Long, because a field that
+ *  came up short is unlikely to be different an hour later. */
+export const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Top up the thinnest field that is below target, if any.
+ *
+ * Called from the cron so the catalogue fills in the background rather than
+ * while somebody waits for their board. Discovery used to run only on a
+ * shortfall at board creation, which meant the first person to want a field
+ * paid for it and waited - and a field nobody had asked for yet stayed empty
+ * however obvious it was that it would be needed.
+ *
+ * Does one field per tick at most. There is no hurry, and a burst of searches
+ * is both a worse bill and a worse neighbour.
+ */
+export async function topUpCatalogue(env, { selfHost } = {}) {
+  if (!env.ANTHROPIC_API_KEY) return { skipped: 'no-key' };
+
+  const counts = await queryAll(
+    env,
+    `SELECT category, COUNT(*) AS n FROM company_directory
+     WHERE failed_streak < ? GROUP BY category`,
+    FAILED_STREAK_LIMIT
+  );
+  const held = new Map(counts.map((row) => [row.category, row.n]));
+
+  const attempts = await queryAll(env, 'SELECT category, attempted_at FROM discovery_attempts');
+  const lastTried = new Map(attempts.map((row) => [row.category, Date.parse(row.attempted_at) || 0]));
+
+  const now = Date.now();
+  const candidates = CATEGORIES.filter((category) => category.id !== 'other')
+    .map((category) => ({ id: category.id, n: held.get(category.id) || 0 }))
+    .filter((entry) => entry.n < CATALOGUE_TARGET)
+    .filter((entry) => now - (lastTried.get(entry.id) || 0) > RETRY_AFTER_MS)
+    // Thinnest first: the field with nothing in it benefits most.
+    .sort((a, b) => a.n - b.n);
+
+  if (candidates.length === 0) return { skipped: 'nothing-below-target' };
+
+  const target = candidates[0];
+  const result = await discoverCompanies(env, {
+    // Background work is charged to its own budget rather than to whichever
+    // user happened to trigger the tick, so one person's daily allowance is
+    // never quietly spent filling a shared catalogue.
+    userId: 'system:catalogue',
+    category: target.id,
+    prompt: '',
+    selfHost,
+  });
+
+  await run(
+    env,
+    `INSERT INTO discovery_attempts (category, attempted_at, found) VALUES (?, ?, ?)
+     ON CONFLICT (category) DO UPDATE SET attempted_at = excluded.attempted_at, found = excluded.found`,
+    target.id,
+    nowIso(),
+    result.added.length
+  );
+
+  return { category: target.id, had: target.n, added: result.added.length, searches: result.searches };
+}
+
 export { CATEGORIES };

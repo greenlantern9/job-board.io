@@ -309,7 +309,7 @@
           <text x="22" y="52" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Company boards</text>
           <text x="22" y="72" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">greenhouse · lever · ashby</text>
           <text x="22" y="88" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-soft)">smartrecruiters</text>
-          <text x="22" y="106" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">78 built in, plus what discovery finds</text>
+          <text x="22" y="106" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--free)">113 built in, plus what discovery finds</text>
 
           <rect x="8" y="128" width="220" height="86" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1"/>
           <text x="22" y="150" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)">Aggregators</text>
@@ -469,9 +469,9 @@
       a slug you already know, so the reachable set is bounded by what can be named.
     </p>
     <p>
-      Every entry below was probed against the live API before being written down. Of 180 candidates
-      tried across two passes, 78 answered with real jobs; the rest were dropped rather than shipped
-      hopefully, because a slug that silently yields nothing costs a request on every refresh.
+      Every entry below was probed against the live API before being written down. Of 298 candidates
+      tried across three passes, 113 answered with real jobs; the rest were dropped rather than
+      shipped hopefully, because a slug that silently yields nothing costs a request on every refresh.
     </p>
 
     <div class="scroll">
@@ -480,8 +480,8 @@
           <tr><th>Platform</th><th>Boards</th><th>Notes</th></tr>
         </thead>
         <tbody>
-          <tr><td class="name">greenhouse</td><td class="num">47</td><td>The widest coverage, and the easiest slugs to guess correctly.</td></tr>
-          <tr><td class="name">ashby</td><td class="num">26</td><td>Newer, so its customers skew to recently founded companies — a much better hit rate than Lever.</td></tr>
+          <tr><td class="name">greenhouse</td><td class="num">69</td><td>The widest coverage, and the easiest slugs to guess correctly.</td></tr>
+          <tr><td class="name">ashby</td><td class="num">39</td><td>Newer, so its customers skew to recently founded companies — a much better hit rate than Lever.</td></tr>
           <tr><td class="name">lever</td><td class="num">4</td><td>Poor yield: most named candidates did not resolve.</td></tr>
           <tr><td class="name">smartrecruiters</td><td class="num">1</td><td>Enterprise-heavy, and slugs are PascalCase rather than lowercase.</td></tr>
         </tbody>
@@ -500,13 +500,15 @@
         </thead>
         <tbody>
           <tr><td class="name">software</td><td class="num">47</td><td><span class="tag tag--free">deep</span></td></tr>
-          <tr><td class="name">creative</td><td class="num">12</td><td><span class="tag tag--free">usable</span></td></tr>
-          <tr><td class="name">teaching</td><td class="num">7</td><td><span class="tag tag--free">usable</span></td></tr>
+          <tr><td class="name">creative</td><td class="num">17</td><td><span class="tag tag--free">deep</span></td></tr>
+          <tr><td class="name">care</td><td class="num">11</td><td><span class="tag tag--free">usable</span></td></tr>
+          <tr><td class="name">teaching</td><td class="num">9</td><td><span class="tag tag--free">usable</span></td></tr>
+          <tr><td class="name">support</td><td class="num">7</td><td><span class="tag tag--free">usable</span></td></tr>
           <tr><td class="name">other</td><td class="num">6</td><td><span class="tag tag--free">usable</span></td></tr>
-          <tr><td class="name">support</td><td class="num">4</td><td><span class="tag tag--free">usable</span></td></tr>
-          <tr><td class="name">care</td><td class="num">1</td><td><span class="tag tag--inert">thin</span></td></tr>
-          <tr><td class="name">trades</td><td class="num">1</td><td><span class="tag tag--inert">thin</span></td></tr>
-          <tr><td class="name">marketing · sales · product</td><td class="num">0</td><td><span class="tag tag--inert">discovery only</span></td></tr>
+          <tr><td class="name">marketing</td><td class="num">5</td><td><span class="tag tag--free">usable</span></td></tr>
+          <tr><td class="name">trades</td><td class="num">4</td><td><span class="tag tag--inert">thin</span></td></tr>
+          <tr><td class="name">product</td><td class="num">4</td><td><span class="tag tag--inert">thin</span></td></tr>
+          <tr><td class="name">sales</td><td class="num">3</td><td><span class="tag tag--inert">thin</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -515,7 +517,9 @@
       <strong>These are a floor, not a ceiling.</strong> Discovery reads slugs off real careers pages
       and writes what it verifies into a catalogue shared by every board. Finding a slug costs a few
       web searches once; the slug is then permanent and identical for everyone, so the next board in
-      that field gets it for nothing. Thin fields fill in as boards are created in them.
+      that field gets it for nothing. Thin fields no longer wait for somebody to want them: a background pass on the cron tops up
+      whichever field is furthest below fifteen boards, one per tick, and stops entirely once every
+      field is at target. Discovery is off the critical path of board creation for good.
     </p>
   </section>
 

@@ -24,6 +24,7 @@ import { AUTH_ROUTES, verifyEmailToken } from './src/routes/auth.js';
 import { APP_ROUTES } from './src/routes/app.js';
 import { boardsDueForRefresh, refreshBoard } from './src/ingest.js';
 import { curateBoard, boardsDueForCuration } from './src/curate.js';
+import { topUpCatalogue } from './src/directory.js';
 import { runNotifications, applyUnsubscribe } from './src/notify.js';
 import { adminGate, adminStats } from './src/admin.js';
 
@@ -328,6 +329,19 @@ async function runCron(env) {
   }
 
   await runNotifications(env);
+
+  // Grow the shared company catalogue in the background.
+  //
+  // Last, and deliberately so: it is the only part of the tick nobody is
+  // waiting on. Discovery used to happen only when a board came up short at
+  // creation, which put a web search on the critical path of somebody's first
+  // impression and left fields nobody had asked for yet completely empty.
+  // Filling it here means the slugs are already there when they are wanted.
+  try {
+    await topUpCatalogue(env, { selfHost });
+  } catch (err) {
+    console.error('catalogue top-up failed', err && err.stack ? err.stack : err);
+  }
 }
 
 export default {

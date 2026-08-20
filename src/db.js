@@ -187,6 +187,16 @@ const STATEMENTS = [
     UNIQUE (kind, identifier)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_directory_category ON company_directory(category, job_count DESC)`,
+  // When each field was last searched for new company boards.
+  //
+  // Needed because a fruitless attempt leaves no trace anywhere else: if the
+  // only evidence of discovery were the rows it created, a field where nothing
+  // could be found would be retried on every tick forever.
+  `CREATE TABLE IF NOT EXISTS discovery_attempts (
+    category TEXT PRIMARY KEY,
+    attempted_at TEXT NOT NULL,
+    found INTEGER NOT NULL DEFAULT 0
+  )`,
   // Model calls per account per day. The ceiling is enforced rather than
   // advised, because every other path degrades silently when the model is
   // unavailable - so an overspend would have no symptom until the bill.
