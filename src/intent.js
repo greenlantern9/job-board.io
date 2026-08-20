@@ -61,10 +61,39 @@ const REMOTE_REQUIRED =
 
 const NEGATED_REMOTE = /\b(not|no|non|isn't|rather than|instead of)\s+(\w+\s+){0,2}remote\b/i;
 
+/**
+ * "Remote" describing where the work is, not how it is done.
+ *
+ * A remote sensing engineer, a remote site technician and remote patient
+ * monitoring are all onsite jobs whose field happens to use the word.
+ */
+const REMOTE_AS_PLACE =
+  /\bremote\s+(sensing|site|sites|area|areas|village|villages|island|islands|camp|camps|outpost|outposts|location|locations|worksite|worksites|patient|monitoring|clinic|clinics|community|communities|region|regions|terrain)\b/gi;
+
+/**
+ * Wording that says another arrangement would also do. Somebody who writes
+ * "remote or hybrid" has said the opposite of remote-only, and filtering
+ * everything else out would discard half of what they asked for.
+ */
+const FLEXIBLE_LOCATION = /\b(hybrid|on[-\s]?site|onsite|in[-\s]?office|in[-\s]person)\b/i;
+
+/**
+ * Whether the sentence asks for remote work.
+ *
+ * This used to require emphasis - "remote-only", "fully remote", "must be
+ * remote" - so somebody who wrote "Technical Program Manager, remote" was shown
+ * onsite roles with no indication why. Nobody puts the word into a job search
+ * to describe something they do not want.
+ */
 export function wantsRemote(prompt) {
   const text = String(prompt || '');
   if (NEGATED_REMOTE.test(text)) return false;
-  return REMOTE_REQUIRED.test(text);
+  if (REMOTE_REQUIRED.test(text)) return true;
+  if (FLEXIBLE_LOCATION.test(text)) return false;
+
+  // A bare mention counts, once the place-name uses are taken out, so
+  // "remote sensing engineer" does not quietly become a remote-only search.
+  return /\bremote\b/i.test(text.replace(REMOTE_AS_PLACE, ' '));
 }
 
 /**

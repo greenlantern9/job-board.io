@@ -186,6 +186,25 @@ export function looksRemote(...fields) {
 }
 
 /**
+ * Whether a posting is genuinely remote, given a platform's own flag.
+ *
+ * The flag alone cannot be trusted. One employer marks 479 of its 737 openings
+ * remote, and 441 of those name a city - so believing it turned a San Francisco
+ * role into a remote one and put it on a board that had asked for remote work.
+ *
+ * A named place wins. If the employer says remote and also says San Francisco,
+ * the specific claim is the one a reader can act on; if they say remote and
+ * name nowhere, there is nothing to contradict it.
+ */
+export function remoteFrom(flag, location, ...rest) {
+  if (looksRemote(location, ...rest)) return true;
+  if (!flag) return false;
+  const place = String(location || '').trim();
+  if (!place) return true;
+  return /\b(remote|anywhere|distributed|global|worldwide)\b/i.test(place);
+}
+
+/**
  * Pulls a salary range out of free text. Deliberately conservative: an
  * unparseable range is better left as raw text than guessed at, because the
  * number feeds a min-salary filter.
@@ -403,7 +422,7 @@ async function fetchAshby(slug) {
       title: String(job.title || 'Untitled role').trim(),
       company: (job.organizationName || board).trim(),
       location: job.location || '',
-      remote: Boolean(job.isRemote) || looksRemote(job.location, job.title),
+      remote: remoteFrom(job.isRemote, job.location, job.title),
       employment: job.employmentType || '',
       salaryMin: salary.min,
       salaryMax: salary.max,
@@ -766,23 +785,16 @@ async function fetchHimalayas(query) {
  * the difference between this source being useful and being noise.
  */
 const MUSE_CATEGORIES = [
-  [/(software|backend|back-end|frontend|front-end|fullstack|full-stack|developer|engineer|golang|rust|python|java|typescript|node)/, 'Software Engineering'],
-  [/(program|project|delivery|tpm|pmo|scrum)/, 'Project Management'],
-  [/(product)/, 'Product Management'],
-  [/(data|analytics|analyst|machine learning|ml|scientist)/, 'Data Science'],
-  [/(devops|sre|infrastructure|platform|cloud|security|network|systems)/, 'IT'],
-  [/(design|designer|ux|ui)/, 'Design'],
-  [/(sales|account executive|business development)/, 'Sales'],
-  [/(marketing|growth|seo|content)/, 'Marketing'],
-  [/(operations|ops|supply)/, 'Business Operations'],
-  [/(finance|accounting|controller)/, 'Accounting'],
-  // Verified against the live API as returning results. The creative
-  // categories a photographer or videographer would want - Creative & Design,
-  // Editorial, Media - all return zero, so there is nothing to map them to
-  // here and they fall through to keyword matching instead.
-  [/(customer service|support|troubleshoot|troubleshooting|helpdesk|help desk|client success)/, 'Customer Service'],
-  [/(retail|store|shop|merchandis)/, 'Retail'],
-  [/(teacher|tutor|instructor|coach|education|training|curriculum)/, 'Education'],
+  [/\b(software|backend|back-end|frontend|front-end|fullstack|full-stack|developer|engineer|golang|rust|python|java|typescript|node)\b/, 'Software Engineering'],
+  [/\b(program|project|delivery|tpm|pmo|scrum)\b/, 'Project Management'],
+  [/\b(product)\b/, 'Product Management'],
+  [/\b(data|analytics|analyst|machine learning|ml|scientist)\b/, 'Data Science'],
+  [/\b(devops|sre|infrastructure|platform|cloud|security|network|systems)\b/, 'IT'],
+  [/\b(design|designer|ux|ui)\b/, 'Design'],
+  [/\b(sales|account executive|business development)\b/, 'Sales'],
+  [/\b(marketing|growth|seo|content)\b/, 'Marketing'],
+  [/\b(operations|ops|supply)\b/, 'Business Operations'],
+  [/\b(finance|accounting|controller)\b/, 'Accounting'],
 ];
 
 const MUSE_LEVELS = [
@@ -877,7 +889,7 @@ async function fetchSmartRecruiters(slug) {
       title: String(job.name || 'Untitled role').trim(),
       company: (job.company && job.company.name) || board,
       location,
-      remote: Boolean(job.location && job.location.remote) || looksRemote(location, job.name),
+      remote: remoteFrom(job.location && job.location.remote, location, job.name),
       employment: (job.typeOfEmployment && job.typeOfEmployment.label) || '',
       salaryMin: 0,
       salaryMax: 0,
@@ -998,18 +1010,18 @@ async function fetchJobicy(query, boardCategory = '') {
   // server-side, which is the difference between this source being useful and
   // being another hundred rows of the same remote engineering jobs.
   // Verified against the live API. Stems rather than whole words, because
-  // photo never matches "photographer" - which is exactly how the first
+  // \bphoto\b never matches "photographer" - which is exactly how the first
   // attempt returned nothing for every creative search.
   const TAGS = [
-    [/photograph|photo|camera/, 'photography'],
-    [/video|videograph|film|cinema|footage|editw*s+video/, 'video'],
+    [/photograph|photo\b|camera/, 'photography'],
+    [/video|videograph|film|cinema|footage|edit\w*\s+video/, 'video'],
     [/creative|storytell|art direct/, 'creative'],
-    [/design|designer|ux|ui|brand/, 'design'],
+    [/\bdesign|designer|ux|ui\b|brand/, 'design'],
     [/support|customer service|client success|troubleshoot|helpdesk|help desk/, 'support'],
     [/copywrit|writer|writing|editor|content/, 'copywriting'],
     [/market|growth|seo|social media/, 'marketing'],
-    [/sales|account executive|business development/, 'sales'],
-    [/data|analytics|analyst/, 'data-science'],
+    [/\bsales|account executive|business development/, 'sales'],
+    [/\bdata\b|analytics|analyst/, 'data-science'],
   ];
   const tag = chosenTag || (TAGS.find(([re]) => re.test(text)) || [])[1];
 
