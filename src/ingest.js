@@ -3,7 +3,7 @@
 
 import { fetchSource, hydrateDescriptions, matchesFilters, normalizeCompany, safeExternalUrl, ATS_KINDS } from './sources.js';
 import { boardQuery } from './curate.js';
-import { heuristicScore } from './rank.js';
+import { jobAgeDays, heuristicScore } from './rank.js';
 import { activeProfile } from './profile.js';
 import { checkLinks, LINK_DEAD, LINK_LIVE } from './verify.js';
 
@@ -77,6 +77,20 @@ export const ADMIT_SCORE_FLOOR = 60;
  * postings that were all judged on the same evidence.
  */
 export const HYDRATE_LIMIT = 40;
+
+/**
+ * How recent a posting has to be to be preferred outright.
+ *
+ * Age is already in the score, but the score has a ceiling: a month-old listing
+ * at a well-known employer paying well reaches 100 anyway, and sat on a board
+ * beside postings from that morning. Rather than tune weights until the
+ * arithmetic happens to express the preference, the preference is stated - a
+ * stale posting is admitted only once the recent ones have run out.
+ *
+ * Postings with no date count as recent. Many sources publish none, and
+ * assuming the worst would bury them for something they never claimed.
+ */
+export const PREFER_FRESHER_THAN_DAYS = 21;
 
 /**
  * How many active jobs one employer may hold on a board.
@@ -501,8 +515,18 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
       })
       .sort((a, b) => b.score - a.score);
 
-    const relevant = rescored.filter(({ score }) => score >= ADMIT_SCORE_FLOOR);
-    summary.belowBar = rescored.length - relevant.length;
+    const admitted = rescored.filter(({ score }) => score >= ADMIT_SCORE_FLOOR);
+
+    // Recent first, as a band rather than a tie-break: within each band the
+    // ranking still decides, so this prefers a fresh posting over a stale one
+    // without preferring a worse fresh posting over a better fresh one.
+    const recentEnough = ({ entry }) => {
+      const days = jobAgeDays(entry.job);
+      return days === null || days <= PREFER_FRESHER_THAN_DAYS;
+    };
+    const relevant = [...admitted.filter(recentEnough), ...admitted.filter((c) => !recentEnough(c))];
+    summary.staleHeldBack = admitted.filter((c) => !recentEnough(c)).length;
+    summary.belowBar = rescored.length - admitted.length;
     summary.passedOver = Math.max(0, relevant.length - slots);
 
     // Overshoot deliberately: link checking drops some, and trimming to exactly

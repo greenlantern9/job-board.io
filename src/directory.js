@@ -581,6 +581,16 @@ export async function loadGreenhouseList(env) {
  * the entire catalogue under software.
  */
 export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK } = {}) {
+  // Largest employers first.
+  //
+  // This had no ordering at all, so it worked through the catalogue in
+  // insertion order - which is alphabetical. Source selection draws its pool by
+  // job_count, so the employers a board actually connects were the last to be
+  // read, and a board built during the first hours of a rollout got employers
+  // that had no vocabulary yet and were therefore ranked as though they
+  // advertised nothing. Starting with the biggest means the pool is covered
+  // after the first tick or two rather than the last.
+  //
   // Rows needing a field, and rows needing a count.
   //
   // Seeded boards were written with job_count = 0 and nothing ever updated
@@ -595,6 +605,7 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
     env,
     `SELECT kind, identifier, category FROM company_directory
      WHERE (category = '' OR job_count = 0 OR title_terms = '') AND failed_streak < ?
+     ORDER BY job_count DESC
      LIMIT ?`,
     FAILED_STREAK_LIMIT,
     limit
