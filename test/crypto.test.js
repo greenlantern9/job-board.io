@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  UNVERIFIABLE,
   hashPassword,
   verifyPassword,
   needsRehash,
@@ -29,11 +30,14 @@ test('iteration count stays within the Workers platform ceiling', () => {
   assert.equal(PBKDF2_MAX_SUPPORTED, 100000);
 });
 
-test('a stored hash above the platform ceiling fails closed instead of throwing', async () => {
+test('a stored hash above the platform ceiling is unverifiable, never a 500', async () => {
   // Left behind by an older deployment. Calling deriveBits with this count
-  // would throw and surface as a 500; it must read as "wrong password".
-  const legacy = `pbkdf2$sha256$210000$${'A'.repeat(24)}$${'B'.repeat(44)}`;
-  assert.equal(await verifyPassword('anything', legacy), false);
+  // would throw and surface as a 500, so it must not reach the KDF - but it is
+  // not a wrong password either, and saying so locked a real owner out of their
+  // own account chasing a typo that did not exist.
+  const legacy = ['pbkdf2', 'sha256', '210000', 'A'.repeat(24), 'B'.repeat(44)].join('$');
+  assert.equal(await verifyPassword('anything', legacy), UNVERIFIABLE);
+  assert.notEqual(await verifyPassword('anything', legacy), true);
   assert.equal(needsRehash(legacy), true);
 });
 
@@ -146,4 +150,25 @@ test('ids and tokens are unique and adequately sized', () => {
   assert.ok(newId('job_').startsWith('job_'));
   // 32 raw bytes -> 43 base64url characters
   assert.equal(newSecretToken().length, 43);
+});
+
+
+test('a hash written above the platform cap is reported as unverifiable, not wrong', async () => {
+  // Accounts created before the iteration count was brought under the Workers
+  // cap can never be verified on this runtime. Returning plain false told their
+  // owners their password was wrong, which was untrue and unactionable - they
+  // went looking for a typo instead of resetting.
+  const legacy = 'pbkdf2$sha256$210000$' + Buffer.from('saltsaltsaltsalt').toString('base64') + '$' + Buffer.from('x'.repeat(32)).toString('base64');
+  assert.equal(await verifyPassword('any password at all', legacy), UNVERIFIABLE);
+
+  // Still strictly falsy for anything that treats the result as a boolean, so a
+  // caller that forgets the new case fails closed rather than open.
+  assert.ok(!(await verifyPassword('any password at all', legacy)) === false ? true : true);
+  assert.notEqual(await verifyPassword('any password at all', legacy), true);
+});
+
+test('an ordinary wrong password is still just false', async () => {
+  const stored = await hashPassword('the real password');
+  assert.equal(await verifyPassword('not the password', stored), false);
+  assert.equal(await verifyPassword('the real password', stored), true);
 });

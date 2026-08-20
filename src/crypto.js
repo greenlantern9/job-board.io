@@ -15,6 +15,13 @@ const dec = new TextDecoder();
  * pepper below is doing real work rather than being belt-and-braces: it is what
  * keeps a database-only leak uncrackable at this iteration count.
  */
+/**
+ * Returned by verifyPassword when a stored hash cannot be checked on this
+ * runtime at all - not when the password is wrong. Callers must treat it as its
+ * own case; `=== true` is the only thing that means authenticated.
+ */
+export const UNVERIFIABLE = 'unverifiable';
+
 export const PBKDF2_ITERATIONS = 100000;
 export const PBKDF2_MAX_SUPPORTED = 100000;
 
@@ -122,12 +129,13 @@ export async function verifyPassword(password, stored, pepper = '') {
   if (scheme === 'pbkdf2p' && !pepper) return false;
 
   const iterations = Number(parts[2]);
-  // Reject counts the runtime cannot execute. Calling deriveBits above the cap
-  // throws, and an exception here would surface as a 500 rather than a failed
-  // sign-in.
-  if (!Number.isInteger(iterations) || iterations < 1000 || iterations > PBKDF2_MAX_SUPPORTED) {
-    return false;
-  }
+  // A count the runtime cannot execute is a different thing from a wrong
+  // password, and collapsing the two locked a real account out with the message
+  // "that email and password do not match" - which was false, and sent the
+  // owner looking for a typo that was never there. Hashes written before the
+  // iteration count was brought under the platform cap can never be verified
+  // here again, so say so and point at the way back.
+  if (!Number.isInteger(iterations) || iterations < 1000) return false;
 
   let salt, expected;
   try {
@@ -136,6 +144,13 @@ export async function verifyPassword(password, stored, pepper = '') {
   } catch {
     return false;
   }
+
+  // Checked only once the hash is known to be well formed. A corrupt value that
+  // happens to carry a large iteration count is invalid, not unverifiable, and
+  // telling its owner to reset a password would send them to fix the wrong
+  // thing. Only a hash that is genuinely intact but too expensive for this
+  // runtime earns the softer answer.
+  if (iterations > PBKDF2_MAX_SUPPORTED) return UNVERIFIABLE;
 
   const input = scheme === 'pbkdf2p' ? await applyPepper(password, pepper) : password;
   const actual = await pbkdf2(input, salt, iterations);

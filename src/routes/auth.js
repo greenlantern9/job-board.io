@@ -12,6 +12,7 @@ import {
   allowRate,
   SESSION_COOKIE,
 } from '../http.js';
+import { UNVERIFIABLE } from '../crypto.js';
 import {
   normalizeEmail,
   isValidEmail,
@@ -119,6 +120,12 @@ async function login(request, env) {
   }
 
   const ok = await checkPassword(env, user, String(body.password || ''));
+  if (ok === UNVERIFIABLE) {
+    return unauthorized(
+      'This account was secured before a security change and its password can no longer be checked. ' +
+        'Use "Forgot your password?" to set a new one — your boards and jobs are untouched.'
+    );
+  }
   if (!ok || !user) return unauthorized('That email and password do not match.');
 
   if (user.totp_enabled) {

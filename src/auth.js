@@ -15,6 +15,7 @@ import {
   toBase64Url,
   timingSafeEqual,
   PBKDF2_ITERATIONS,
+  UNVERIFIABLE,
 } from './crypto.js';
 import { queryOne, queryAll, run, nowIso, isoIn, parseJson } from './db.js';
 
@@ -121,6 +122,7 @@ export async function checkPassword(env, user, password) {
     return false;
   }
   const ok = await verifyPassword(password, user.password_hash, pepper);
+  if (ok === UNVERIFIABLE) return UNVERIFIABLE;
   if (ok) {
     const patch = { failed_logins: 0, locked_until: '' };
     // Transparently upgrade the stored hash if our parameters have moved on,
