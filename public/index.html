@@ -3,23 +3,64 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>job-boards.io — build custom, simple, free job boards</title>
+    <title>Build your own free job board — find, rank, track jobs</title>
     <meta
       name="description"
-      content="Pull openings from company job boards, rank them against criteria you write in plain English, and track every application from first look to offer."
+      content="Type one sentence about the job you want. Openings come straight from company career pages, ranked against your criteria, on one free board."
     />
     <meta name="theme-color" content="#0d0e0a" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://job-boards.io/" />
-    <meta property="og:title" content="job-boards.io" />
+    <meta property="og:title" content="Build your own job board. Free." />
     <meta
       property="og:description"
-      content="Tired of LinkedIn? Build custom, simple, free job boards helping you find what you actually want."
+      content="One sentence about the job you want. We find the openings, rank every one against it, and put the good ones on top."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://job-boards.io/" />
+    <meta property="og:site_name" content="job-boards.io" />
+    <meta property="og:image" content="https://job-boards.io/assets/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Build your own job board. Free." />
+    <meta
+      name="twitter:description"
+      content="One sentence about the job you want. We find the openings, rank every one against it, and put the good ones on top."
+    />
+    <meta name="twitter:image" content="https://job-boards.io/assets/og.png" />
     <link rel="stylesheet" href="/assets/base.css" />
     <link rel="stylesheet" href="/assets/landing.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://job-boards.io/#org",
+            "name": "job-boards.io",
+            "url": "https://job-boards.io/",
+            "logo": "https://job-boards.io/assets/og.png"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://job-boards.io/#site",
+            "name": "job-boards.io",
+            "url": "https://job-boards.io/",
+            "publisher": { "@id": "https://job-boards.io/#org" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "job-boards.io",
+            "url": "https://job-boards.io/",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web browser",
+            "description": "Build a personal job board from one plain-English sentence. Openings are pulled from company career pages, ranked against your criteria, and tracked from first look to offer.",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a href="#main" class="skip">Skip to content</a>
@@ -33,6 +74,7 @@
         <a href="#how">How it works</a>
         <a href="#features">Features</a>
         <a href="#security">Security</a>
+        <a href="/faq">FAQ</a>
       </nav>
       <div class="nav__actions">
         <a class="btn btn--ghost btn--sm" href="/app">Sign in</a>
@@ -285,8 +327,8 @@
             <li>
               <strong>Delete means delete</strong>
               <span
-                >One confirmation removes your account, boards, jobs, and alert history. No
-                thirty-day purgatory.</span
+                >Your password and a typed phrase remove your account, boards, jobs, and history
+                at once. No thirty-day purgatory.</span
               >
             </li>
           </ul>
@@ -309,7 +351,9 @@
         <span class="wordmark__dot" aria-hidden="true"></span>
         job-boards<span class="wordmark__tld">.io</span>
       </a>
-      <p class="mono footer__note">Openings are pulled from public company job-board APIs.</p>
+      <p class="mono footer__note">
+        Openings are pulled from public company job-board APIs. <a href="/faq">FAQ</a>
+      </p>
     </footer>
   </body>
 </html>

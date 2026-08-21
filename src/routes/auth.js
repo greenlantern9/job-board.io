@@ -428,6 +428,13 @@ async function deleteAccount(request, env, ctx) {
     env.DB.prepare('DELETE FROM notification_rules WHERE user_id = ?').bind(id),
     env.DB.prepare('DELETE FROM notifications WHERE user_id = ?').bind(id),
     env.DB.prepare('DELETE FROM email_tokens WHERE user_id = ?').bind(id),
+    // The published promise is "delete means delete", and these four were
+    // surviving it: the application-history archive carries the profile
+    // headline and skills in every snapshot, and profiles is the CV itself.
+    env.DB.prepare('DELETE FROM job_events WHERE user_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM profiles WHERE user_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM leads WHERE user_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM feedback WHERE user_id = ?').bind(id),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id),
   ]);

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FAQ — job-boards.io</title>
+    <meta
+      name="description"
+      content="What job-boards.io is, where the jobs come from, how the ranking works, and what free actually means. Straight answers, no marketing."
+    />
+    <meta name="theme-color" content="#0d0e0a" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://job-boards.io/faq" />
+    <meta property="og:title" content="FAQ — job-boards.io" />
+    <meta
+      property="og:description"
+      content="Where the jobs come from, how the ranking works, and what free actually means."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://job-boards.io/faq" />
+    <meta property="og:site_name" content="job-boards.io" />
+    <meta property="og:image" content="https://job-boards.io/assets/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="FAQ — job-boards.io" />
+    <meta
+      name="twitter:description"
+      content="Where the jobs come from, how the ranking works, and what free actually means."
+    />
+    <meta name="twitter:image" content="https://job-boards.io/assets/og.png" />
+    <link rel="stylesheet" href="/assets/base.css" />
+    <link rel="stylesheet" href="/assets/landing.css" />
+    <style>
+      /* The Q&A rhythm. Everything else comes from the landing stylesheet, so
+         this page cannot drift from the rest of the site. */
+      .faq {
+        max-width: 46rem;
+        margin: 0 auto;
+        padding: 3.5rem clamp(1rem, 5vw, 3.5rem) 5rem;
+      }
+      .faq h1 {
+        font-size: clamp(1.9rem, 4vw, 2.6rem);
+        letter-spacing: -0.02em;
+        margin-bottom: 0.75rem;
+        text-wrap: balance;
+      }
+      .faq__lede {
+        color: var(--muted);
+        margin-bottom: 3rem;
+        max-width: 38rem;
+      }
+      .faq h2 {
+        font-size: 1.15rem;
+        letter-spacing: -0.01em;
+        margin: 2.4rem 0 0.6rem;
+        text-wrap: balance;
+      }
+      .faq p {
+        color: var(--muted);
+        line-height: 1.65;
+        margin-bottom: 0.8rem;
+        max-width: 65ch;
+      }
+      .faq strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .faq__cta {
+        margin-top: 3.5rem;
+        padding-top: 2rem;
+        border-top: 1px solid var(--line-soft);
+      }
+    </style>
+  </head>
+  <body>
+    <a href="#main" class="skip">Skip to content</a>
+
+    <header class="nav">
+      <a class="wordmark" href="/">
+        <span class="wordmark__dot" aria-hidden="true"></span>
+        job-boards<span class="wordmark__tld">.io</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="/#how">How it works</a>
+        <a href="/#features">Features</a>
+        <a href="/faq">FAQ</a>
+      </nav>
+      <div class="nav__actions">
+        <a class="btn btn--ghost btn--sm" href="/app">Sign in</a>
+        <a class="btn btn--primary btn--sm" href="/app?mode=signup">Start free</a>
+      </div>
+    </header>
+
+    <main id="main" class="faq">
+      <h1>Questions, answered straight</h1>
+      <p class="faq__lede">
+        The short version of everything people ask before they build a board. No answer here is
+        longer than it needs to be.
+      </p>
+
+      <h2>What is job-boards.io?</h2>
+      <p>
+        A job board you build for yourself in about two minutes. You describe the job you want in
+        one plain-English sentence, and job-boards.io finds openings from real company career
+        pages, scores every one against what you asked for, and puts the best matches on top.
+      </p>
+
+      <h2>Is it really free?</h2>
+      <p>
+        Yes. No credit card, no trial that expires, no paid tier hiding the useful parts. And
+        deleting your account - your password plus a typed phrase, so it cannot happen by
+        accident - removes everything at once.
+      </p>
+
+      <h2>Where do the jobs come from?</h2>
+      <p>
+        Straight from the source: the public career-site APIs companies themselves publish on
+        platforms like Greenhouse, Lever, Ashby, and SmartRecruiters. The catalogue covers roughly
+        twelve thousand employers. Because a posting is read from the company's own board, its
+        presence there proves the job is live — when it disappears from the source, your board
+        says so instead of leaving you chasing a dead listing.
+      </p>
+
+      <h2>How does the ranking work?</h2>
+      <p>
+        Your sentence is the criteria. Each posting is scored against it — role, seniority,
+        salary floor, remote preference — and facts like posting age and pay are read off the
+        listing rather than guessed. A posting that is four weeks old ranks below an equally good
+        one from yesterday, and the reason for every score is shown on the card.
+      </p>
+
+      <h2>Can I track my applications on it?</h2>
+      <p>
+        Yes. Every job on a board carries a status — new, saved, applied, interview, offer —
+        and you move it along as you go, in a list or on a kanban board. If a company takes a
+        posting down after you applied, the job stays on your board with a note, because your
+        application did not disappear with the listing.
+      </p>
+
+      <h2>How is this different from LinkedIn or Indeed?</h2>
+      <p>
+        Those are marketplaces: they show what pays them to be shown, ranked for engagement, the
+        same feed for everyone. This is your board: it only contains jobs that match criteria you
+        wrote, ranked by how well they match, with no ads, no recruiters, and no one else's
+        activity in it.
+      </p>
+
+      <h2>Do I have to say "remote" in a special way?</h2>
+      <p>
+        No. Write it how you would say it. Mentioning remote ranks remote work first; saying
+        <strong>remote only</strong> excludes on-site roles outright. Salary is stricter:
+        writing "at least $180k" removes postings that advertise pay below that, and keeps the
+        ones that do not state pay at all - dropping every listing without a published range
+        would discard most of the market.
+      </p>
+
+      <h2>What happens to my data?</h2>
+      <p>
+        Your account carries two-factor authentication, you can review and revoke every signed-in
+        device, and deleting your account - your password plus a typed phrase - removes your boards,
+        jobs, profile, and application history at once. Nothing is sold, and there is no
+        thirty-day deletion purgatory.
+      </p>
+
+      <div class="faq__cta">
+        <h2>Ready to try it?</h2>
+        <p>Set up takes about two minutes — one sentence, then it runs itself.</p>
+        <a class="btn btn--primary" href="/app?mode=signup">Build my board</a>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a class="wordmark wordmark--sm" href="/">
+        <span class="wordmark__dot" aria-hidden="true"></span>
+        job-boards<span class="wordmark__tld">.io</span>
+      </a>
+      <p class="mono footer__note">Openings are pulled from public company job-board APIs.</p>
+    </footer>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is job-boards.io?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "A job board you build for yourself in about two minutes. You describe the job you want in one plain-English sentence, and job-boards.io finds openings from real company career pages, scores every one against what you asked for, and puts the best matches on top."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is it really free?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. No credit card, no trial that expires, no paid tier hiding the useful parts. And deleting your account - your password plus a typed phrase, so it cannot happen by accident - removes everything at once."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Where do the jobs come from?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Straight from the source: the public career-site APIs companies themselves publish on platforms like Greenhouse, Lever, Ashby, and SmartRecruiters. The catalogue covers roughly twelve thousand employers. Because a posting is read from the company's own board, its presence there proves the job is live — when it disappears from the source, your board says so instead of leaving you chasing a dead listing."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How does the ranking work?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Your sentence is the criteria. Each posting is scored against it — role, seniority, salary floor, remote preference — and facts like posting age and pay are read off the listing rather than guessed. A posting that is four weeks old ranks below an equally good one from yesterday, and the reason for every score is shown on the card."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I track my applications on it?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Every job on a board carries a status — new, saved, applied, interview, offer — and you move it along as you go, in a list or on a kanban board. If a company takes a posting down after you applied, the job stays on your board with a note, because your application did not disappear with the listing."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How is this different from LinkedIn or Indeed?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Those are marketplaces: they show what pays them to be shown, ranked for engagement, the same feed for everyone. This is your board: it only contains jobs that match criteria you wrote, ranked by how well they match, with no ads, no recruiters, and no one else's activity in it."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I have to say \"remote\" in a special way?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Write it how you would say it. Mentioning remote ranks remote work first; saying remote only excludes on-site roles outright. Salary is stricter: writing \"at least $180k\" removes postings that advertise pay below that, and keeps the ones that do not state pay at all - dropping every listing without a published range would discard most of the market."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What happens to my data?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Your account carries two-factor authentication, you can review and revoke every signed-in device, and deleting your account - your password plus a typed phrase - removes your boards, jobs, profile, and application history at once. Nothing is sold, and there is no thirty-day deletion purgatory."
+            }
+          }
+        ]
+      }
+    </script>
+  </body>
+</html>

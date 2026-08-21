@@ -60,6 +60,7 @@ function htmlPage({ title, heading, body, linkHref, linkLabel }, status = 200) {
   return new Response(
     `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
 <title>${escapeHtml(title)}</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
@@ -281,6 +282,12 @@ async function handleRequest(request, env, executionCtx) {
     return serveAsset(env, request, '/index.html');
   }
 
+  // Public, indexable pages. Spelled out because html_handling is "none" -
+  // the asset server is a literal file server and this file owns routing.
+  if (url.pathname === '/faq') {
+    return serveAsset(env, request, '/faq.html');
+  }
+
   // Every app route is the same shell; the client router reads the path.
   if (
     url.pathname === '/app' ||
@@ -290,6 +297,23 @@ async function handleRequest(request, env, executionCtx) {
     url.pathname === '/signup'
   ) {
     return serveAsset(env, request, '/app.html');
+  }
+
+  // Pages are reached through their routes above, never as raw files. Without
+  // this, /admin.html named a real file and the fallback served the admin
+  // shell around the gate - which matches only the exact path '/admin' - and
+  // every routed page had a crawlable duplicate at its .html twin.
+  if (url.pathname.endsWith('.html')) {
+    return htmlPage(
+      {
+        title: 'Not found',
+        heading: 'Nothing here',
+        body: 'That page does not exist.',
+        linkHref: '/',
+        linkLabel: 'Back to job-boards.io',
+      },
+      404
+    );
   }
 
   const asset = await serveAsset(env, request, url.pathname);

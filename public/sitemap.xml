@@ -2,7 +2,10 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://job-boards.io/</loc>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
+    <lastmod>2026-08-21</lastmod>
+  </url>
+  <url>
+    <loc>https://job-boards.io/faq</loc>
+    <lastmod>2026-08-21</lastmod>
   </url>
 </urlset>
