@@ -24,7 +24,7 @@ import { AUTH_ROUTES, verifyEmailToken } from './src/routes/auth.js';
 import { APP_ROUTES } from './src/routes/app.js';
 import { boardsDueForRefresh, refreshBoard } from './src/ingest.js';
 import { curateBoard, boardsDueForCuration } from './src/curate.js';
-import { topUpCatalogue, loadGreenhouseList, classifyBoards } from './src/directory.js';
+import { topUpCatalogue, loadPublishedLists, classifyBoards } from './src/directory.js';
 import { recordError } from './src/ops.js';
 import { VERSION } from './src/version.js';
 import { runNotifications, applyUnsubscribe } from './src/notify.js';
@@ -373,7 +373,7 @@ async function runCron(env) {
     // Order matters, cheapest first. Loading the published list is local work.
     // Classifying reads boards we already know about. Only when both are done
     // does discovery pay to look for boards nobody has listed.
-    await loadGreenhouseList(env);
+    await loadPublishedLists(env);
     await classifyBoards(env, { selfHost });
     await topUpCatalogue(env, { selfHost });
   } catch (err) {

@@ -19,6 +19,7 @@ import { fetchSource, validateSlug, ATS_KINDS } from './sources.js';
 import { reserveCall, recordUsage } from './budget.js';
 import { CATEGORIES, getCategory, inferCategory } from './categories.js';
 import { GREENHOUSE_BOARDS } from './greenhouse-directory.js';
+import { ATS_BOARDS } from './ats-directory.js';
 
 /** Names put forward per discovery run. Each one costs a probe, and probes are
  *  subrequests inside an already-tight budget. */
@@ -541,35 +542,48 @@ const CLASSIFY_PER_TICK = 500;
  *  in one breath and get us throttled at the other end for no gain. */
 const CLASSIFY_CONCURRENCY = 20;
 
+/** How long before a board that answered with nothing is looked at again. An
+ *  employer between hiring rounds is worth revisiting, but not every tick. */
+const RECHECK_QUIET_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+
 /** What the winning field has to clear before it is believed: at least this
  *  many postings, and this share of the board. A24 was being filed under
  *  marketing on one vote out of seven. */
 const VOTE_MIN_COUNT = 2;
 const VOTE_MIN_SHARE = 0.15;
 
-/** Bound parameters D1 allows in one statement, minus headroom. Six columns
- *  per row, so sixteen rows fits. */
-const BULK_ROWS_PER_STATEMENT = 16;
+/** Rows per INSERT, bounded by D1's cap of a hundred bound parameters in one
+ *  statement.
+ *
+ *  Seven columns per row, so fourteen rows fits with headroom. This was sized
+ *  for six and adding the openings count took it to a hundred and twelve, which
+ *  D1 rejects - and the batch fails as a whole, so three lists loaded nothing
+ *  at all and said nothing about it. */
+const BULK_ROWS_PER_STATEMENT = 14;
 
 /**
- * Load the published Greenhouse list into the catalogue, a slice per tick.
+ * Load the published lists into the catalogue, a slice per tick.
  *
- * Greenhouse publishes no directory, so every slug used to cost a web search
- * to discover. A published list supplies thousands at once and removes that
- * spend for this platform entirely - what it cannot supply is which field each
- * employer hires for, which is what classifyBoards works out afterwards.
+ * None of the four platforms publishes a directory, so every slug used to cost
+ * a web search to discover. Published lists supply nearly twelve thousand at
+ * once and remove that spend entirely - what they cannot supply is which field
+ * each employer hires for, which is what classifyBoards works out afterwards.
  *
  * Entries land with no category on purpose. directoryFor matches on an exact
  * category, so an unclassified row is invisible to board creation rather than
  * being offered to every board indiscriminately.
  */
-export async function loadGreenhouseList(env) {
-  const existing = await queryAll(
-    env,
-    "SELECT identifier FROM company_directory WHERE kind = 'greenhouse'"
+export async function loadPublishedLists(env) {
+  const existing = await queryAll(env, 'SELECT kind, identifier FROM company_directory');
+  const have = new Set(existing.map((row) => `${row.kind}:${row.identifier}`.toLowerCase()));
+
+  const published = [
+    ...GREENHOUSE_BOARDS.map((board) => ({ kind: 'greenhouse', ...board })),
+    ...ATS_BOARDS,
+  ];
+  const missing = published.filter(
+    (board) => !have.has(`${board.kind}:${board.identifier}`.toLowerCase())
   );
-  const have = new Set(existing.map((row) => row.identifier.toLowerCase()));
-  const missing = GREENHOUSE_BOARDS.filter((board) => !have.has(board.identifier.toLowerCase()));
   if (!missing.length) return { inserted: 0, remaining: 0 };
 
   const slice = missing.slice(0, BULK_INSERT_PER_TICK);
@@ -577,15 +591,23 @@ export async function loadGreenhouseList(env) {
   const statements = [];
   for (let i = 0; i < slice.length; i += BULK_ROWS_PER_STATEMENT) {
     const chunk = slice.slice(i, i + BULK_ROWS_PER_STATEMENT);
-    const values = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+    const values = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
     const params = [];
     for (const board of chunk) {
-      params.push(newId('co_'), 'greenhouse', board.identifier, board.name.slice(0, 120), '', now);
+      params.push(
+        newId('co_'),
+        board.kind,
+        board.identifier,
+        String(board.name).slice(0, 120),
+        '',
+        board.openRoles || 0,
+        now
+      );
     }
     statements.push(
       env.DB.prepare(
         `INSERT OR IGNORE INTO company_directory
-           (id, kind, identifier, name, category, created_at)
+           (id, kind, identifier, name, category, job_count, created_at)
          VALUES ${values}`
       ).bind(...params)
     );
@@ -631,10 +653,22 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
   const pending = await queryAll(
     env,
     `SELECT kind, identifier, category FROM company_directory
-     WHERE (category = '' OR job_count = 0 OR title_terms = '') AND failed_streak < ?
+     WHERE (category = '' OR job_count = 0 OR title_terms = '')
+       AND failed_streak < ?
+       -- Skip only the ones already checked and found empty.
+       --
+       -- The window applied to every pending row, so an employer that had been
+       -- read but still needed a vocabulary was locked out for three days -
+       -- which stalled four and a half thousand of them behind boards that had
+       -- nothing to give. A row is only resting if it was checked, returned
+       -- nothing, and therefore has neither a count nor any titles to record.
+       AND NOT (
+         verified_at <> '' AND verified_at >= ? AND job_count = 0 AND title_terms = ''
+       )
      ORDER BY timeout_streak ASC, job_count DESC
      LIMIT ?`,
     FAILED_STREAK_LIMIT,
+    new Date(Date.now() - RECHECK_QUIET_AFTER_MS).toISOString(),
     limit
   );
   if (!pending.length) return { classified: 0, retired: 0 };
@@ -706,7 +740,17 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
   let retired = 0;
   for (const result of results) {
     if (result.quiet) {
-      // Nothing to record. It answered; it simply has nothing on today.
+      // It answered and had nothing. Record that it was checked.
+      //
+      // Otherwise it stays in the pending queue permanently - the query selects
+      // on an empty title_terms, which a board with no titles can never fill -
+      // and several thousand dormant boards would be re-read every five minutes
+      // for ever, crowding out the ones that have something to say.
+      writes.push(
+        env.DB.prepare(
+          'UPDATE company_directory SET verified_at = ?, timeout_streak = 0 WHERE kind = ? AND identifier = ?'
+        ).bind(now, result.row.kind, result.row.identifier)
+      );
       continue;
     }
     if (result.failed) {

@@ -311,7 +311,23 @@ export function contextAdjustment(job, { filters = {} } = {}) {
     notes.push('well-known employer');
   }
 
-  if (filters.remoteOnly && job.remote) notes.push('remote');
+  // Remote has to be here, not only in the heuristic.
+  //
+  // The model replaces the heuristic score outright, so a preference expressed
+  // only there vanished the moment an API key was configured - which is every
+  // production board. It was measured on a dev server with no key, on a code
+  // path production does not run.
+  if (filters.remotePreferred) {
+    if (job.remote) {
+      delta += 10;
+      notes.push('remote');
+    } else {
+      delta -= 22;
+      notes.push('not remote');
+    }
+  } else if (filters.remoteOnly && job.remote) {
+    notes.push('remote');
+  }
 
   return { delta, notes };
 }

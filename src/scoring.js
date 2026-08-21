@@ -132,7 +132,8 @@ async function scoreBatchWithClaude(client, model, jobs, { prompt, filters }) {
     filters.keywords && `Required keywords: ${filters.keywords}`,
     filters.exclude && `Ruled out: ${filters.exclude}`,
     filters.locations && `Preferred locations: ${filters.locations}`,
-    filters.remoteOnly && 'They want remote roles.',
+    filters.remoteOnly && 'They want remote roles, and will not take anything else.',
+    filters.remotePreferred && 'They would much prefer remote work, though it is not a hard requirement.',
     filters.minSalary && `Minimum acceptable salary: ${filters.minSalary}`,
   ]
     .filter(Boolean)

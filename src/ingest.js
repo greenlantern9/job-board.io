@@ -537,15 +537,33 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
 
     const admitted = rescored.filter(({ score }) => score >= ADMIT_SCORE_FLOOR);
 
-    // Recent first, as a band rather than a tie-break: within each band the
-    // ranking still decides, so this prefers a fresh posting over a stale one
-    // without preferring a worse fresh posting over a better fresh one.
+    // Bands, applied in order of what was asked for.
+    //
+    // Ordering by score cannot express either of these while the score clamps
+    // at 100: a strong onsite posting ties with every remote one, and its
+    // position then falls to the order rows happened to be written in. So the
+    // preference is stated as a band - everything remote is offered a slot
+    // before anything onsite is - which is also what makes a preference better
+    // than a filter rather than merely different. A filter gave a board eight
+    // jobs, all remote; ranking alone gave it ten with four. Banding gives it
+    // ten, with every remote posting among them.
     const recentEnough = ({ entry }) => {
       const days = jobAgeDays(entry.job);
       return days === null || days <= PREFER_FRESHER_THAN_DAYS;
     };
-    const relevant = [...admitted.filter(recentEnough), ...admitted.filter((c) => !recentEnough(c))];
+    const isRemote = ({ entry }) => Boolean(entry.job.remote);
+
+    const band = (candidates) => [
+      ...candidates.filter(recentEnough),
+      ...candidates.filter((c) => !recentEnough(c)),
+    ];
+
+    const relevant = activeFilters.remotePreferred
+      ? [...band(admitted.filter(isRemote)), ...band(admitted.filter((c) => !isRemote(c)))]
+      : band(admitted);
+
     summary.staleHeldBack = admitted.filter((c) => !recentEnough(c)).length;
+    summary.remoteFirst = Boolean(activeFilters.remotePreferred);
     summary.belowBar = rescored.length - admitted.length;
     summary.passedOver = Math.max(0, relevant.length - slots);
 
