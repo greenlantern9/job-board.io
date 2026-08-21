@@ -184,13 +184,18 @@
         </nav>
 
         <div class="sidebar__foot">
-          <button class="sidebar__account" id="open-account">
-            <span class="avatar mono" id="avatar">—</span>
-            <span class="sidebar__account-text">
-              <span class="sidebar__email" id="sidebar-email">—</span>
-              <span class="sidebar__sub mono" id="sidebar-sub">Account &amp; security</span>
-            </span>
-          </button>
+          <div class="sidebar__identity">
+            <button class="sidebar__account" id="open-account">
+              <span class="avatar mono" id="avatar">—</span>
+              <span class="sidebar__account-text">
+                <span class="sidebar__email" id="sidebar-email">—</span>
+                <span class="sidebar__sub mono" id="sidebar-sub">Account &amp; security</span>
+              </span>
+            </button>
+            <button class="icon-btn sidebar__signout" id="sign-out" title="Sign out" aria-label="Sign out">
+              <span aria-hidden="true">⏻</span>
+            </button>
+          </div>
         </div>
       </aside>
 

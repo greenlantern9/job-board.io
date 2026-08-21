@@ -271,6 +271,28 @@
   padding-top: 0.9rem;
 }
 
+/* The account row and the way out, on one line. */
+.sidebar__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sidebar__identity .sidebar__account {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar__signout {
+  flex: none;
+  color: var(--muted);
+}
+
+.sidebar__signout:hover {
+  color: var(--danger);
+  background: var(--surface-2);
+}
+
 .sidebar__account {
   display: flex;
   align-items: center;

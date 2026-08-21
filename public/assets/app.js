@@ -2666,18 +2666,6 @@ async function renderAccount(container) {
       h('p', { text: 'Removes your account, boards, jobs, and alert history immediately. There is no undo.' }),
       h('div', { class: 'row' }, fieldRow('Password', delPassword), fieldRow('Type "delete my account"', delConfirm)),
       h('div', { style: 'display:flex;justify-content:flex-end' }, del)
-    ),
-    h(
-      'div',
-      { style: 'display:flex;justify-content:flex-end;margin-top:1rem' },
-      h('button', {
-        class: 'btn btn--ghost',
-        text: 'Sign out',
-        onclick: async () => {
-          await api('/api/auth/logout', { method: 'POST', body: {} });
-          location.reload();
-        },
-      })
     )
   );
 }
@@ -2985,6 +2973,21 @@ async function boot() {
     navButton('Profile', openProfile),
     navButton('Send feedback', openFeedback)
   );
+
+  // Signing out was at the bottom of the account dialog, below deleting the
+  // account - so leaving required opening a modal and scrolling past the most
+  // destructive control in the app. It sits in the sidebar now, next to who you
+  // are signed in as, which is the question it answers.
+  const signOut = $('#sign-out');
+  if (signOut) {
+    signOut.addEventListener('click', async () => {
+      try {
+        await api('/api/auth/logout', { method: 'POST', body: {} });
+      } finally {
+        location.reload();
+      }
+    });
+  }
 
   const params = new URLSearchParams(location.search);
 
