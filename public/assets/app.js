@@ -2905,7 +2905,65 @@ function wireApp() {
   $('#modal-scrim').addEventListener('click', closeModal);
   $('#drawer-scrim').addEventListener('click', closeDrawer);
 
-  $('#sidebar-open').addEventListener('click', () => $('#app').classList.add('sidebar-open'));
+  // The sidebar collapses on wide screens, where it was permanent furniture.
+  // Narrow ones already had this: there it is off-canvas by default and the
+  // same menu button in the topbar brings it back.
+  const wideLayout = window.matchMedia('(min-width: 881px)');
+  const COLLAPSED_KEY = 'jb.nav.collapsed';
+
+  // A collapsed sidebar is slid out of view, and something out of view must not
+  // still be reachable by tabbing into it. visibility: hidden mostly handles
+  // that, but inert is the part that is actually guaranteed to - it takes the
+  // whole subtree out of the tab order and the accessibility tree together.
+  //
+  // Scoped to the wide layout on purpose. The collapse only exists above 881px,
+  // so a window narrowed after collapsing keeps the class while the CSS stops
+  // applying; setting inert from the class alone would leave the mobile drawer
+  // opening as normal and then ignoring every tap.
+  function applyNavInert() {
+    const sidebar = $('#sidebar');
+    if (!sidebar) return;
+    sidebar.inert = $('#app').classList.contains('sidebar-collapsed') && wideLayout.matches;
+  }
+
+  // Belt and braces: the change event is the tidy signal, but it cannot be
+  // relied on by itself, so every control that shows the sidebar recomputes too.
+  wideLayout.addEventListener('change', applyNavInert);
+  window.addEventListener('resize', applyNavInert);
+
+  function setNavCollapsed(collapsed) {
+    $('#app').classList.toggle('sidebar-collapsed', collapsed);
+    applyNavInert();
+    // Both controls describe the same region, so both report its state.
+    $('#sidebar-collapse')?.setAttribute('aria-expanded', String(!collapsed));
+    $('#sidebar-open')?.setAttribute('aria-expanded', String(!collapsed));
+    try {
+      localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch (err) {
+      // Storage can be refused outright in private browsing. The control still
+      // works; it just forgets the choice between visits, which is a better
+      // outcome than the whole handler throwing.
+    }
+  }
+
+  try {
+    if (localStorage.getItem(COLLAPSED_KEY) === '1') setNavCollapsed(true);
+  } catch (err) {
+    // Same again: an unreadable store just means the default, not a failure.
+  }
+
+  $('#sidebar-collapse').addEventListener('click', () => setNavCollapsed(true));
+
+  $('#sidebar-open').addEventListener('click', () => {
+    // One button, two layouts. Only touching the stored choice when the wide
+    // layout is actually in use stops a tap on a phone from deciding what the
+    // desktop looks like on the next visit.
+    if (wideLayout.matches) setNavCollapsed(false);
+    else $('#app').classList.add('sidebar-open');
+    // Whichever branch ran, the sidebar is meant to be usable now.
+    applyNavInert();
+  });
+
   $('#sidebar-close').addEventListener('click', () => $('#app').classList.remove('sidebar-open'));
   $('#sidebar-scrim').addEventListener('click', () => $('#app').classList.remove('sidebar-open'));
 

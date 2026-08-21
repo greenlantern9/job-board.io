@@ -201,6 +201,57 @@
   display: none;
 }
 
+/* Collapsing on a wide screen.
+   Narrow screens are already handled further down: there the sidebar is
+   off-canvas by default and the topbar's menu button brings it back. On a wide
+   one it was permanent furniture, so this gives that width back to the board. */
+.sidebar__collapse {
+  display: none;
+}
+
+@media (min-width: 881px) {
+  .sidebar__collapse {
+    display: inline-grid;
+  }
+
+  .app {
+    transition: grid-template-columns 0.22s var(--ease);
+  }
+
+  /* visibility rather than display, for two reasons: display cannot be
+     transitioned, and a sidebar that is merely translated off-screen keeps its
+     links in the tab order - so tabbing would walk through a menu nobody can
+     see. The 0.22s delay holds it visible until the slide has finished. */
+  .sidebar {
+    transition: transform 0.22s var(--ease), visibility 0s linear 0s;
+  }
+
+  .app.sidebar-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  .app.sidebar-collapsed .sidebar {
+    /* Its own width is kept so the slide has a distance to cover; the column
+       around it is what shrinks to nothing. */
+    width: 15.5rem;
+    transform: translateX(-100%);
+    visibility: hidden;
+    border-right-color: transparent;
+    transition: transform 0.22s var(--ease), visibility 0s linear 0.22s;
+  }
+
+  .app.sidebar-collapsed .topbar__menu {
+    display: inline-grid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app,
+  .sidebar {
+    transition: none;
+  }
+}
+
 .sidebar__section {
   display: flex;
   flex-direction: column;
