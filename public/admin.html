@@ -343,7 +343,7 @@
           <text x="22" y="52" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Company boards</text>
           <text x="22" y="72" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">greenhouse · lever · ashby</text>
           <text x="22" y="88" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">smartrecruiters</text>
-          <text x="22" y="106" font-family="var(--mono)" font-size="11" fill="var(--free)">~4,900 catalogued · live count above</text>
+          <text x="22" y="106" font-family="var(--mono)" font-size="11" fill="var(--free)">~11,900 catalogued · live count above</text>
 
           <rect x="8" y="128" width="220" height="86" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1"/>
           <text x="22" y="150" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Aggregators</text>
@@ -439,7 +439,7 @@
             <td class="name">greenhouse<br>lever<br>ashby<br>smartrecruiters</td>
             <td>whole company listing</td>
             <td><span class="tag tag--free">works</span></td>
-            <td>Thousands of catalogued employers, nearly all Greenhouse. Presence in the current listing proves a job is live, so no link check is needed.</td>
+            <td>Roughly twelve thousand catalogued employers across the four platforms. Presence in the current listing proves a job is live, so no link check is needed.</td>
           </tr>
           <tr>
             <td class="name">weworkremotely</td>
@@ -504,35 +504,36 @@
     </p>
     <p>
       That used to mean buying slugs one at a time: a web search per company, paid for by whoever
-      wanted that field first. The catalogue reached 113 boards that way. A published list of
-      employers with live Greenhouse boards then supplied <strong>4,870 at once</strong>, and removed
-      the need to pay for discovery on that platform entirely.
+      wanted that field first. The catalogue reached 113 boards that way. Published lists of
+      employers then supplied the rest — <strong>Greenhouse, Lever, SmartRecruiters and Ashby</strong>,
+      taking the catalogue to roughly twelve thousand employers and removing the need to pay for
+      discovery on any of them.
     </p>
     <p>
-      The list was not taken on trust. A sample of 60 spread across it was probed against the live
-      API before anything was committed: <strong>every slug resolved</strong>, and 55 still had
-      openings. The five misses were boards that had emptied since the list was compiled — the decay
-      its own notes warn about, rather than bad slugs. Boards that go quiet are retired
-      automatically after three consecutive failures.
+      None of the lists was taken on trust. Samples spread across each were probed through this
+      app's own connectors before anything was committed — the same code that will read them in
+      production, rather than a script written to agree with the list. <strong>Every slug
+      resolved</strong>; not one 404 across 180 probes.
     </p>
 
     <div class="scroll">
       <table>
         <thead>
-          <tr><th>Platform</th><th>How boards are found</th><th>Notes</th></tr>
+          <tr><th>Platform</th><th>Sampled</th><th>Answered with jobs</th><th>Failed</th><th>Notes</th></tr>
         </thead>
         <tbody>
-          <tr><td class="name">greenhouse</td><td>Published list</td><td>Thousands of verified slugs, no per-company cost. Discovery is unnecessary here.</td></tr>
-          <tr><td class="name">ashby</td><td>Discovery</td><td>Newer, so its customers skew to recently founded companies — a much better hit rate than Lever.</td></tr>
-          <tr><td class="name">lever</td><td>Discovery</td><td>Poor yield: most named candidates did not resolve.</td></tr>
-          <tr><td class="name">smartrecruiters</td><td>Discovery</td><td>Enterprise-heavy, and slugs are PascalCase rather than lowercase.</td></tr>
+          <tr><td class="name">greenhouse</td><td class="num">60</td><td class="num">55</td><td class="num">0</td><td>The five misses had emptied since the list was compiled — decay its own notes warn about, not bad slugs.</td></tr>
+          <tr><td class="name">ashby</td><td class="num">40</td><td class="num">40</td><td class="num">0</td><td>Publishes an open-roles count, so only boards with a live posting were taken.</td></tr>
+          <tr><td class="name">lever</td><td class="num">40</td><td class="num">36</td><td class="num">0</td><td>Also carries a count; its dormant half — 3,112 boards — was left out.</td></tr>
+          <tr><td class="name">smartrecruiters</td><td class="num">40</td><td class="num">22</td><td class="num">0</td><td>No openings column exists for this platform, so all of it is here and about half is quiet on any day.</td></tr>
         </tbody>
       </table>
     </div>
     <p class="hint" style="margin-top:.5rem">
-      Live counts are in the Catalogue table at the top of this page. They are deliberately not
+      Live counts are in the Catalogue tables at the top of this page. They are deliberately not
       repeated here — this section went stale three times in one day quoting numbers that had moved.
     </p>
+
 
     <h3 style="margin-top:2rem">Working out what each employer hires for</h3>
     <p>
@@ -575,6 +576,59 @@
         </tbody>
       </table>
     </div>
+
+    <h3 style="margin-top:2rem">Choosing which employers a board connects</h3>
+    <p>
+      A board connects 36 employers out of nearly twelve thousand, so which 36 decides almost
+      everything. They used to be chosen by field and by size, and neither says whether a company is
+      hiring for the role somebody searched. Of eighteen employers on one programme-management
+      board, eight were advertising programme-management roles — and none of those eight had been
+      connected.
+    </p>
+    <p>
+      Classification already reads every title on every board, so it keeps the vocabulary it saw:
+      up to 250 distinct words per employer. Selection then ranks candidates by how many of the
+      searched-for words appear in what that employer actually posts, drawn from both the board's
+      own field and the catalogue at large.
+    </p>
+    <p>
+      Two details decide whether that works. The words compared are the ones naming the role, not
+      the whole sentence — "top tech company, 250k base salary minimum" put "tech", "company" and
+      "base" into the comparison, which almost every employer matches, and that was worse than
+      ordering by size. And the vocabulary keeps rare words, not frequent ones: at sixty words per
+      employer it recorded each company's main line of work, so a company with ten
+      programme-management roles among eight hundred postings recorded neither "technical" nor
+      "programme".
+    </p>
+
+    <h3 style="margin-top:2rem">What the sentence is allowed to decide</h3>
+    <p>
+      Criteria written as prose are read for a field, a salary floor, a seniority and a preference
+      for remote work. Prose expresses a preference; the form expresses a rule. Writing "remote"
+      ranks remote work first and admits every remote posting before any onsite one, while the
+      checkbox — or writing "remote only" — excludes onsite work outright.
+    </p>
+    <p>
+      That distinction was got wrong once, at a cost worth recording. Reading a bare "remote" as a
+      rule dropped 91 of the 108 matching postings on one board, five sixths of what the person had
+      asked for, while the 250k salary floor they had also written dropped none at all.
+    </p>
+
+    <h3 style="margin-top:2rem">Slow is not the same as gone</h3>
+    <p>
+      A board that times out used to be counted as a failure, and three failures retire an employer
+      from every search on the service. The largest listings take longest to read — one returns
+      three and a half megabytes and takes nearly thirty seconds — so the richest sources were the
+      first to be deleted. Four of the twelve biggest employers in the catalogue had been retired
+      this way before it was noticed, and a retired row was excluded from the query that would have
+      re-read it, so nothing could bring it back.
+    </p>
+    <p>
+      Slowness and absence now have separate counters. A slow board is offered last rather than not
+      at all, is read first when the background pass runs, and a successful read clears both. A
+      board that answers with no openings counts as neither: an employer between hiring rounds has
+      not gone away, and is simply looked at again in a few days.
+    </p>
 
     <p class="note">
       <strong>Cheapest first, and paid discovery last.</strong> Each cron tick loads more of the
@@ -666,7 +720,7 @@
       <div class="card">
         <h3>Ranking jobs</h3>
         <span class="cost">up to 4 calls per refresh</span>
-        <p>Reads your sentence and scores each posting against it. Jobs the built-in scorer already rates below 35 are never sent — paying to confirm a warehouse role isn’t a photography job is the easiest waste to cut. A refresh that finds nothing new costs nothing at all.</p>
+        <p>Reads your sentence and scores each posting against it. Jobs the built-in scorer already rates below 35 are never sent — paying to confirm a warehouse role isn’t a photography job is the easiest waste to cut. A refresh that finds nothing new costs nothing at all. Recency, pay and a stated preference for remote work are applied afterwards as arithmetic, because the model answers whether a posting matches and those are facts to read off the listing rather than judgements.</p>
       </div>
       <div class="card">
         <h3>Finding employers</h3>
@@ -691,7 +745,7 @@
       <div class="card">
         <h3>Classifying employers</h3>
         <span class="cost">free</span>
-        <p>Not a model call at all. Reads the titles already on a board and counts them, which is both cheaper and more accurate than asking a model to guess from a company name.</p>
+        <p>Not a model call at all. Reads the titles already on a board, counts them to decide the field, and keeps the words themselves so a later search can tell whether this employer advertises the role being looked for. Cheaper and more accurate than asking a model to guess from a company name — and it is why seeding twelve thousand employers costs nothing.</p>
       </div>
     </div>
 
