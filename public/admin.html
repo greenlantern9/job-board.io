@@ -87,6 +87,45 @@
 
   header { display: flex; flex-direction: column; gap: .75rem; }
 
+  /* A heading with a control on the same line. The h2 keeps its own bottom
+     margin so the gap below this row matches every other section's. */
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .refresh-row {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+  }
+
+  #refresh {
+    font-family: var(--sans);
+    font-size: .85rem;
+    font-weight: 500;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: .4rem .85rem;
+    cursor: pointer;
+  }
+
+  #refresh:hover:not(:disabled) { border-color: var(--ink-faint); }
+  #refresh:focus-visible { outline: 2px solid var(--free); outline-offset: 2px; }
+  #refresh:disabled { color: var(--ink-faint); cursor: default; }
+
+  #refresh-note {
+    font-family: var(--mono);
+    font-size: .75rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
   .eyebrow {
     font-family: var(--mono);
     font-size: .75rem;
@@ -261,9 +300,17 @@
 
 
   <section id="live">
-    <h2>Right now</h2>
-    <p>Read from the database on load. Counts only — the page answers how the
-      service is being used, not who is using it.</p>
+    <div class="section-head">
+      <h2>Right now</h2>
+      <div class="refresh-row">
+        <span id="refresh-note"></span>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+    </div>
+    <p>Read from the database on load, and again whenever you press Refresh —
+      the catalogue fills in the background, so these numbers move while the page
+      sits still. Counts only — the page answers how the service is being used,
+      not who is using it.</p>
 
     <div class="cards" id="stat-cards">
       <div class="card"><h3>Loading…</h3></div>

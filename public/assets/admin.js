@@ -23,7 +23,7 @@ const fmt = (n) => Number(n || 0).toLocaleString();
     return el;
   }
 
-  (async () => {
+  async function loadStats() {
     // Sub-cent amounts are the normal case here, and rounding them to $0.00
     // would make real spend look like none at all.
     const money = (n) => {
@@ -218,11 +218,11 @@ const fmt = (n) => Number(n || 0).toLocaleString();
         readinessHost.append(rc);
       }
     }
-  })();
+  }
 
   // Operations: accounts, failures, feedback. A separate call from the counts,
   // because this one carries addresses and free text.
-  (async () => {
+  async function loadOperations() {
     const ago = (iso) => {
       if (!iso) return 'never';
       const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -331,4 +331,41 @@ const fmt = (n) => Number(n || 0).toLocaleString();
       fill('#errors-table', 4, 'Unavailable — ' + err.message);
       fill('#feedback-table', 4, 'Unavailable — ' + err.message);
     }
-  })();
+  }
+
+  // Refreshing without reloading.
+  //
+  // The catalogue fills in the background, so these numbers change while the
+  // page sits still - and until now the only way to see that was a reload,
+  // which is a strange thing to ask of a page whose whole job is reporting
+  // current state.
+  //
+  // One control drives both loaders rather than one each. They are separate
+  // fetches, but a page showing fresh counts beside stale operations is worse
+  // than one that is uniformly a minute old.
+  const refreshBtn = document.getElementById('refresh');
+  const refreshNote = document.getElementById('refresh-note');
+
+  async function refreshAll() {
+    if (refreshBtn) {
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = 'Refreshing…';
+    }
+
+    // allSettled, not all: each loader already renders its own failure into its
+    // own cards, so one of them failing must not stop the other from painting
+    // numbers it fetched successfully.
+    await Promise.allSettled([loadStats(), loadOperations()]);
+
+    if (refreshNote) {
+      refreshNote.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    }
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = 'Refresh';
+    }
+  }
+
+  if (refreshBtn) refreshBtn.addEventListener('click', refreshAll);
+
+  refreshAll();
