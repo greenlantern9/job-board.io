@@ -430,7 +430,11 @@ async function enterApp(user) {
     }
   }
 
-  if (!user.emailVerified) {
+  // Asking somebody to confirm an address is only reasonable if a message is
+  // actually sent. With no provider configured the confirmation never arrives,
+  // so the banner was a standing instruction to do something impossible. It
+  // returns on its own once RESEND_API_KEY is set - nothing to remember.
+  if (!user.emailVerified && user.emailDelivery) {
     banner('Confirm your email address to start receiving alerts.', 'warn');
   }
 
@@ -1630,12 +1634,20 @@ async function openAlerts() {
 
 async function renderAlerts(container) {
   clear(container);
-  const [{ rules, emailVerified }, { notifications }] = await Promise.all([
+  const [{ rules, emailVerified, emailDelivery }, { notifications }] = await Promise.all([
     api('/api/rules'),
     api('/api/notifications'),
   ]);
 
-  if (!emailVerified) {
+  if (!emailDelivery) {
+    // Saying nothing would be worse than the old nag: alerts would be built and
+    // then quietly never arrive. This states the actual blocker, which is the
+    // service's, not the reader's - so there is nothing here for them to do.
+    container.append(
+      h('div', { class: 'notice notice--warn' },
+        'Email delivery is not set up yet, so alerts are saved but not sent. They will start arriving once it is switched on.')
+    );
+  } else if (!emailVerified) {
     container.append(
       h(
         'div',
@@ -1645,8 +1657,8 @@ async function renderAlerts(container) {
           class: 'linkish',
           text: 'Resend the confirmation',
           onclick: async () => {
-            await api('/api/auth/verify/resend', { method: 'POST', body: {} });
-            toast('Confirmation email sent');
+            const res = await api('/api/auth/verify/resend', { method: 'POST', body: {} });
+            toast(res.delivery === 'sent' ? 'Confirmation email sent' : 'Could not send the confirmation just now');
           },
         })
       )
@@ -2645,15 +2657,19 @@ async function renderAccount(container) {
       'div',
       { class: 'panel' },
       h('h3', { text: 'Signed in as' }),
-      h('p', { text: `${user.email}${user.emailVerified ? '' : ' — not confirmed yet'}` }),
-      user.emailVerified
+      h('p', {
+        text: `${user.email}${!user.emailVerified && user.emailDelivery ? ' — not confirmed yet' : ''}`,
+      }),
+      user.emailVerified || !user.emailDelivery
         ? null
         : h('button', {
             class: 'btn btn--ghost btn--sm',
             text: 'Resend confirmation',
             onclick: async () => {
-              await api('/api/auth/verify/resend', { method: 'POST', body: {} });
-              toast('Confirmation email sent');
+              // The endpoint reports what it managed to do. Announcing a send
+              // it had skipped is how this looked fine while doing nothing.
+              const res = await api('/api/auth/verify/resend', { method: 'POST', body: {} });
+              toast(res.delivery === 'sent' ? 'Confirmation email sent' : 'Could not send the confirmation just now');
             },
           })
     ),

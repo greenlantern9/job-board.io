@@ -1034,7 +1034,11 @@ async function listRules(request, env, ctx) {
     'SELECT * FROM notification_rules WHERE user_id = ? ORDER BY created_at ASC',
     ctx.user.id
   );
-  return json({ rules: rows.map(ruleToPublic), emailVerified: Boolean(ctx.user.email_verified) });
+  return json({
+    rules: rows.map(ruleToPublic),
+    emailVerified: Boolean(ctx.user.email_verified),
+    emailDelivery: Boolean(env.RESEND_API_KEY),
+  });
 }
 
 function ruleFields(body, existing = {}) {

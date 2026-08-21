@@ -326,12 +326,20 @@ export async function disableMfa(env, userId) {
 
 // --- request context -------------------------------------------------------
 
-/** The shape handed to the client; never includes secrets or hashes. */
-export function publicUser(user) {
+/**
+ * The shape handed to the client; never includes secrets or hashes.
+ *
+ * emailDelivery is a property of the service rather than of the person, and it
+ * rides along here because every caller that returns a user is a caller whose
+ * client has to decide whether to ask them to confirm an address. Threading it
+ * separately meant setting it at four call sites and missing one.
+ */
+export function publicUser(user, env) {
   return {
     id: user.id,
     email: user.email,
     emailVerified: Boolean(user.email_verified),
+    emailDelivery: Boolean(env && env.RESEND_API_KEY),
     mfaEnabled: Boolean(user.totp_enabled),
     isAdmin: Boolean(user.is_admin),
     timezone: user.timezone || 'UTC',

@@ -105,7 +105,7 @@ async function signup(request, env) {
     // inbox" with no provider configured is the same class of untruth as
     // telling someone their correct password is wrong: it sends them to wait
     // for something that is never coming.
-    { ok: true, user: publicUser(user), pendingVerification: true, emailDelivery: Boolean(env.RESEND_API_KEY) },
+    { ok: true, user: publicUser(user, env), pendingVerification: true, emailDelivery: Boolean(env.RESEND_API_KEY) },
     { headers: { 'Set-Cookie': cookieFor(token, maxAge) } }
   );
 }
@@ -144,14 +144,14 @@ async function login(request, env) {
 
   const { token, maxAge } = await createSession(env, user, { request, mfaSatisfied: true });
   return json(
-    { ok: true, user: publicUser(user) },
+    { ok: true, user: publicUser(user, env) },
     { headers: { 'Set-Cookie': cookieFor(token, maxAge) } }
   );
 }
 
 async function mfaChallenge(request, env, ctx) {
   if (!ctx.session || !ctx.user) return unauthorized('Start again from the sign-in screen.');
-  if (ctx.session.mfa_satisfied) return json({ ok: true, user: publicUser(ctx.user) });
+  if (ctx.session.mfa_satisfied) return json({ ok: true, user: publicUser(ctx.user, env) });
   if (!(await allowRate(env.AUTH_RATE_LIMIT, `mfa:${ctx.user.id}`))) return tooMany();
 
   const body = await readJson(request);
@@ -170,7 +170,7 @@ async function mfaChallenge(request, env, ctx) {
   const maxAge = await upgradeSession(env, ctx.token);
   const fresh = await findUserById(env, ctx.user.id);
   return json(
-    { ok: true, user: publicUser(fresh) },
+    { ok: true, user: publicUser(fresh, env) },
     { headers: { 'Set-Cookie': cookieFor(ctx.token, maxAge) } }
   );
 }
@@ -183,7 +183,7 @@ async function logout(request, env, ctx) {
 async function session(request, env, ctx) {
   if (!ctx.user || !ctx.session) return unauthorized();
   if (!ctx.session.mfa_satisfied) return json({ mfaRequired: true }, { status: 401 });
-  return json({ user: publicUser(ctx.user) });
+  return json({ user: publicUser(ctx.user, env) });
 }
 
 async function verifyEmailToken(env, token) {
@@ -407,7 +407,7 @@ async function updateAccount(request, env, ctx) {
     return badRequest('That timezone is not recognised.');
   }
   await run(env, 'UPDATE users SET timezone = ?, updated_at = ? WHERE id = ?', timezone, nowIso(), ctx.user.id);
-  return json({ ok: true, user: publicUser({ ...ctx.user, timezone }) });
+  return json({ ok: true, user: publicUser({ ...ctx.user, timezone }, env) });
 }
 
 async function deleteAccount(request, env, ctx) {
