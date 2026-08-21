@@ -410,24 +410,34 @@ async function enterApp(user) {
   $('#sidebar-email').textContent = user.email;
   $('#avatar').textContent = (user.email[0] || '?').toUpperCase();
 
-  // Sources and Profile are not ready for users to see or configure, so both
-  // entry points are the owner's alone. Added here rather than in boot()
-  // because that runs before the session is known, when every account looks
-  // like a stranger.
+  // The whole sidebar list is built here rather than in boot(). These were
+  // once appended into the Boards section, directly beneath the list of boards
+  // and styled like the button that creates one, so destinations read as though
+  // they might be boards themselves; they have their own labelled section now.
+  // What is offered in it depends on the account, and boot() runs before the
+  // session is known, when every account looks like a stranger.
   //
-  // Hiding a button is presentation only - the endpoints behind both are gated
-  // on the server, which is what actually restricts them.
+  // Applications, Insights and Alerts are not rolled out yet; Sources and
+  // Profile are not ready to be seen or configured. Hiding a button is
+  // presentation only - the endpoints behind all five are gated on the server,
+  // which is what actually restricts them.
   const ownerOnly = [
+    ['applications-btn', 'Applications', openApplications],
+    ['insights-btn', 'Insights', openInsights],
+    ['alerts-btn', 'Alerts', openAlerts],
     ['sources-btn', 'Sources', openSources],
     ['profile-btn', 'Profile', openProfile],
   ];
-  if (user.isAdmin) {
-    for (const [id, label, open] of ownerOnly) {
-      if ($('#' + id)) continue;
-      const button = navButton(label, open);
-      button.id = id;
-      $('#app-nav').append(button);
-    }
+
+  // Last, so it stays at the foot of the list however much sits above it.
+  const everyone = [['feedback-btn', 'Send feedback', openFeedback]];
+
+  for (const [id, label, open] of [...(user.isAdmin ? ownerOnly : []), ...everyone]) {
+    // enterApp runs again on re-authentication; without this the list doubles.
+    if ($('#' + id)) continue;
+    const button = navButton(label, open);
+    button.id = id;
+    $('#app-nav').append(button);
   }
 
   // Asking somebody to confirm an address is only reasonable if a message is
@@ -2985,17 +2995,6 @@ function navButton(label, onclick) {
 async function boot() {
   wireAuth();
   wireApp();
-
-  // These were appended into the Boards section, directly beneath the list of
-  // boards and styled like the button that creates one - so four destinations
-  // read as though they might be boards themselves. They now have their own
-  // labelled section.
-  $('#app-nav').append(
-    navButton('Applications', openApplications),
-    navButton('Insights', openInsights),
-    navButton('Alerts', openAlerts),
-    navButton('Send feedback', openFeedback)
-  );
 
   // Signing out was at the bottom of the account dialog, below deleting the
   // account - so leaving required opening a modal and scrolling past the most

@@ -109,6 +109,61 @@ test('the profile entry is not offered to everyone', async () => {
   );
 });
 
+test('the unreleased views are owner-only, endpoints included', async () => {
+  // Alerts, Insights and Applications are held back until they have been tested
+  // and rolled out deliberately. Each route below is reached from exactly one of
+  // those views and nowhere else, which is what makes gating them safe.
+  const { APP_ROUTES } = await import('../src/routes/app.js');
+  const held = [
+    'GET /api/rules',
+    'POST /api/rules/create',
+    'POST /api/rules/update',
+    'POST /api/rules/delete',
+    'GET /api/notifications',
+    'GET /api/insights',
+    'GET /api/jobs/history',
+    'GET /api/applications',
+    'POST /api/jobs/followed-up',
+  ];
+  const open = held.filter((key) => {
+    const route = APP_ROUTES[key];
+    assert.ok(route, key + ' has gone missing from the routes table');
+    return route.admin !== true;
+  });
+  assert.deepEqual(open, [], 'these routes are reachable by any signed-in account');
+});
+
+test('holding those views back does not touch the board itself', async () => {
+  // The counterpart, and the one that matters most: a board has to keep working
+  // for an ordinary account. Marking a job applied goes through
+  // POST /api/jobs/update, which must not have been swept up in the gating.
+  const { APP_ROUTES } = await import('../src/routes/app.js');
+  for (const key of ['GET /api/jobs', 'POST /api/jobs/update', 'POST /api/jobs/bulk', 'GET /api/jobs/changes']) {
+    assert.ok(APP_ROUTES[key], key + ' has gone missing');
+    assert.notEqual(APP_ROUTES[key].admin, true, key + ' is gated but ordinary use needs it');
+  }
+});
+
+test('the sidebar is built from the session, not at boot', async () => {
+  // boot() runs before the session is known, so anything appended there is
+  // offered to every account regardless of who they are. The held-back
+  // destinations must not reappear at that point.
+  const app = fs.readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8');
+  for (const label of ['Applications', 'Insights', 'Alerts', 'Sources', 'Profile']) {
+    assert.ok(
+      !app.includes(`navButton('${label}', open`),
+      label + ' is being appended without checking the account'
+    );
+  }
+  for (const id of ['applications-btn', 'insights-btn', 'alerts-btn', 'sources-btn', 'profile-btn']) {
+    assert.ok(app.includes(`'${id}'`), id + ' is missing from the owner-only list');
+  }
+  assert.ok(
+    app.includes("const everyone = [['feedback-btn', 'Send feedback', openFeedback]]"),
+    'Send feedback should stay available to every account'
+  );
+});
+
 test('ordinary board endpoints are not owner-gated', async () => {
   // The counterpart: the gate must not have been applied so broadly that normal
   // use needs admin.

@@ -1155,16 +1155,25 @@ export const APP_ROUTES = {
   'POST /api/jobs/update': { handler: updateJob },
   'POST /api/jobs/bulk': { handler: bulkUpdateJobs },
 
-  'GET /api/rules': { handler: listRules },
-  'POST /api/rules/create': { handler: createRule },
-  'POST /api/rules/update': { handler: updateRule },
-  'POST /api/rules/delete': { handler: deleteRule },
-  'GET /api/notifications': { handler: notificationHistory },
+  // Alerts, Insights and Applications are owner-only until they have been
+  // tested and deliberately rolled out. Each of these routes is reached from
+  // exactly one of those three views and from nowhere else, so gating them
+  // leaves the board itself untouched - marking a job applied goes through
+  // POST /api/jobs/update above, which stays open.
+  //
+  // The cron reads notification_rules straight from the database rather than
+  // through GET /api/rules, so gating the route does not stop alerts that
+  // already exist from being processed.
+  'GET /api/rules': { handler: listRules, admin: true },
+  'POST /api/rules/create': { handler: createRule, admin: true },
+  'POST /api/rules/update': { handler: updateRule, admin: true },
+  'POST /api/rules/delete': { handler: deleteRule, admin: true },
+  'GET /api/notifications': { handler: notificationHistory, admin: true },
 
-  'GET /api/insights': { handler: insights },
-  'GET /api/jobs/history': { handler: jobHistoryRoute },
-  'GET /api/applications': { handler: applicationsRoute },
-  'POST /api/jobs/followed-up': { handler: markFollowedUp },
+  'GET /api/insights': { handler: insights, admin: true },
+  'GET /api/jobs/history': { handler: jobHistoryRoute, admin: true },
+  'GET /api/applications': { handler: applicationsRoute, admin: true },
+  'POST /api/jobs/followed-up': { handler: markFollowedUp, admin: true },
 
   // Owner only while the profile is being tried out. Hiding the sidebar entry
   // on its own would be a UI change dressed as a restriction: the endpoints
