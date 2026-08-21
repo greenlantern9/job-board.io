@@ -410,16 +410,24 @@ async function enterApp(user) {
   $('#sidebar-email').textContent = user.email;
   $('#avatar').textContent = (user.email[0] || '?').toUpperCase();
 
-  // Sources are not ready for users to see or configure, so the entry point is
-  // the owner's alone. Added here rather than in boot() because that runs
-  // before the session is known, when every account looks like a stranger.
+  // Sources and Profile are not ready for users to see or configure, so both
+  // entry points are the owner's alone. Added here rather than in boot()
+  // because that runs before the session is known, when every account looks
+  // like a stranger.
   //
-  // Hiding the button is presentation only - the endpoints behind it are gated
+  // Hiding a button is presentation only - the endpoints behind both are gated
   // on the server, which is what actually restricts them.
-  if (user.isAdmin && !$('#sources-btn')) {
-    const button = navButton('Sources', openSources);
-    button.id = 'sources-btn';
-    $('#app-nav').append(button);
+  const ownerOnly = [
+    ['sources-btn', 'Sources', openSources],
+    ['profile-btn', 'Profile', openProfile],
+  ];
+  if (user.isAdmin) {
+    for (const [id, label, open] of ownerOnly) {
+      if ($('#' + id)) continue;
+      const button = navButton(label, open);
+      button.id = id;
+      $('#app-nav').append(button);
+    }
   }
 
   if (!user.emailVerified) {
@@ -2970,7 +2978,6 @@ async function boot() {
     navButton('Applications', openApplications),
     navButton('Insights', openInsights),
     navButton('Alerts', openAlerts),
-    navButton('Profile', openProfile),
     navButton('Send feedback', openFeedback)
   );
 

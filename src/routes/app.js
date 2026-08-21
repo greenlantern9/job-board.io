@@ -1162,7 +1162,11 @@ export const APP_ROUTES = {
   'GET /api/applications': { handler: applicationsRoute },
   'POST /api/jobs/followed-up': { handler: markFollowedUp },
 
-  'GET /api/profile': { handler: readProfile },
-  'POST /api/profile': { handler: writeProfile },
-  'POST /api/profile/parse': { handler: parseProfile },
+  // Owner only while the profile is being tried out. Hiding the sidebar entry
+  // on its own would be a UI change dressed as a restriction: the endpoints
+  // would still answer anyone who called them directly, and one of them spends
+  // a model call reading an uploaded CV.
+  'GET /api/profile': { handler: readProfile, admin: true },
+  'POST /api/profile': { handler: writeProfile, admin: true },
+  'POST /api/profile/parse': { handler: parseProfile, admin: true },
 };

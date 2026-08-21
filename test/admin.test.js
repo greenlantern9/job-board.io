@@ -1,4 +1,5 @@
 import test from 'node:test';
+import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { adminGate } from '../src/admin.js';
 
@@ -81,6 +82,31 @@ test('every sources endpoint is owner-only', async () => {
   assert.ok(sources.length >= 6, 'expected the sources routes to be present');
   const open = sources.filter(([, route]) => route.admin !== true).map(([key]) => key);
   assert.deepEqual(open, [], 'these sources routes are not owner-gated');
+});
+
+test('every profile endpoint is owner-only', async () => {
+  // Same reasoning as sources, with one addition: /api/profile/parse spends a
+  // model call on an uploaded CV, so an ungated one is a bill anybody can run
+  // up as well as a surface nobody has tested yet.
+  const { APP_ROUTES } = await import('../src/routes/app.js');
+  const profile = Object.entries(APP_ROUTES).filter(([key]) => key.includes('/api/profile'));
+  assert.ok(profile.length >= 3, 'expected the profile routes to be present');
+  const open = profile.filter(([, route]) => route.admin !== true).map(([key]) => key);
+  assert.deepEqual(open, [], 'these profile routes are not owner-gated');
+});
+
+test('the profile entry is not offered to everyone', async () => {
+  // The button and the gate have to move together. If the entry point returns
+  // to the list every account gets, ordinary users see a button that 403s.
+  const app = fs.readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8');
+  assert.ok(
+    !app.includes("navButton('Profile', openProfile),"),
+    'Profile is back in the nav list every account receives'
+  );
+  assert.ok(
+    app.includes("['profile-btn', 'Profile', openProfile]"),
+    'Profile is missing from the owner-only entries'
+  );
 });
 
 test('ordinary board endpoints are not owner-gated', async () => {
