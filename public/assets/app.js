@@ -216,8 +216,17 @@ function showModal(title, bodyNode, { wide = false } = {}) {
   clear($('#modal-body')).append(bodyNode);
   $('.modal__panel').classList.toggle('modal__panel--wide', wide);
   $('#modal').hidden = false;
+
+  // Every nav destination opens through here, and on a phone the nav is a
+  // drawer - without this it stayed open underneath whatever it had opened,
+  // waiting behind the modal.
+  $('#app').classList.remove('sidebar-open');
+
+  // Autofocus is a courtesy on a desktop and a nuisance on a phone, where
+  // focusing an input throws the keyboard over the modal someone has only
+  // just opened and has not read yet.
   const focusable = $('input, select, textarea, button', $('#modal-body'));
-  if (focusable) focusable.focus();
+  if (focusable && window.matchMedia('(pointer: fine)').matches) focusable.focus();
 }
 
 function closeModal() {
@@ -622,7 +631,9 @@ function renderStatusChips() {
       'select',
       {
         class: 'select',
-        style: 'width:auto;padding:.32rem 1.9rem .32rem .7rem;font-size:.8125rem',
+        // Sizing lives in the stylesheet (.recency .select): an inline font-size
+        // here beat the mobile 16px rule, and below 16px iOS zooms on focus.
+        style: 'width:auto;padding:.32rem 1.9rem .32rem .7rem',
         onchange: async (event) => {
           state.maxAgeDays = Number(event.target.value);
           await loadJobs();

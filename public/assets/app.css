@@ -513,8 +513,55 @@
   .input--search {
     width: 8rem;
   }
-  #board-settings {
-    display: none;
+
+  /* The tools row was 406px of controls on a 375px screen. Wrapping them onto
+     their own line under the title costs a little height and buys the room
+     that used to be bought by hiding Board settings - which was the only way
+     to edit or delete a board, so a phone user could create one and then
+     never change it. */
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+  .topbar__tools {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+  .topbar__title h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Touch sizing. 44px is the floor a thumb can hit reliably; the desktop
+     sizes stay as they are because a cursor does not need the help. 16px on
+     the inputs is not cosmetic - below it, iOS zooms the page on every focus
+     and leaves it zoomed. */
+  .btn,
+  .btn--sm,
+  .icon-btn,
+  .chip,
+  .select,
+  .status-select,
+  .segmented__btn {
+    min-height: 2.75rem;
+  }
+  .icon-btn {
+    min-width: 2.75rem;
+  }
+  .chip {
+    padding: 0.5rem 0.9rem;
+  }
+  .input,
+  .select,
+  .recency .select,
+  textarea.input,
+  select.status-select {
+    /* Not cosmetic: below 16px, iOS zooms the page on every focus and leaves
+       it zoomed. select.status-select outranks the 0.75rem rule later in the file, which a bare class at the same specificity could not. */
+    font-size: 16px;
   }
 }
 
@@ -524,6 +571,64 @@
   }
   .input--search {
     width: 6.5rem;
+  }
+}
+
+/* At phone width the table regroups into cards. Same DOM, same cells - the
+   eight columns cannot be honestly read at 375px, and scrolling a table
+   sideways to see the salary is a chore nobody finishes. The order in the
+   card is the order someone triages in: what is it, where, how good, then
+   what to do about it. */
+@media (max-width: 640px) {
+  .jobs thead {
+    display: none;
+  }
+  .jobs,
+  .jobs tbody {
+    display: block;
+  }
+  .jobs tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'title   title  title'
+      'company company company'
+      'place   place  place'
+      'score   age    pay'
+      'status  status actions';
+    align-items: center;
+    gap: 0.3rem 0.7rem;
+    padding: 0.9rem 1rem;
+  }
+  .jobs td {
+    display: block;
+    padding: 0;
+  }
+  .jobs td:nth-child(1) { grid-area: score; }
+  .jobs td:nth-child(2) { grid-area: age; }
+  .jobs td:nth-child(3) { grid-area: title; }
+  .jobs td:nth-child(4) { grid-area: company; }
+  .jobs td:nth-child(5) { grid-area: place; }
+  .jobs td:nth-child(6) { grid-area: pay; text-align: right; white-space: nowrap; }
+  .jobs td:nth-child(7) { grid-area: status; }
+  .jobs td:nth-child(8) { grid-area: actions; justify-self: end; }
+
+  .jobs .job__title {
+    font-size: 1rem;
+    margin-bottom: 0;
+  }
+  .jobs .job__company,
+  .jobs .job__place {
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  /* The score bar reads as a gauge on desktop; on the card the number does the
+     work and the bar would just be a stray line. */
+  .jobs .score__bar {
+    display: none;
+  }
+  .jobs .status-select {
+    width: 100%;
   }
 }
 
@@ -616,6 +721,14 @@
   gap: 0.5rem;
 }
 
+/* Wide screens only - the mobile 16px rule sits earlier in the file, and an
+   unscoped rule here would win the source-order tie and undo it. */
+@media (min-width: 881px) {
+  .recency .select {
+    font-size: 0.8125rem;
+  }
+}
+
 .minscore {
   display: flex;
   align-items: center;
@@ -683,7 +796,11 @@
 .table-wrap {
   border: 1px solid var(--line-soft);
   border-radius: var(--r-lg);
-  overflow: hidden;
+  /* auto, not hidden: hidden merely clips, while the table's min-content width
+     still propagates and inflates the layout viewport - on a phone the entire
+     app rendered zoomed out to 681px because of this one table. auto contains
+     the width and gives mid-size screens a scrollbar inside the frame. */
+  overflow-x: auto;
   background: var(--surface);
 }
 
@@ -870,23 +987,19 @@
   width: 8rem;
 }
 
-@media (max-width: 1100px) {
+/* While the row is still a table, columns drop as width runs out - a squeezed
+   eight-column grid helps nobody. The card takes over at 640px and keeps every
+   cell, so these stop exactly where it begins rather than fighting it. */
+@media (max-width: 1100px) and (min-width: 641px) {
   .jobs__pay-col,
   .jobs tbody td:nth-child(6) {
     display: none;
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px) and (min-width: 641px) {
   .jobs__place-col,
   .jobs tbody td:nth-child(5) {
-    display: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .jobs__status-col,
-  .jobs tbody td:nth-child(7) {
     display: none;
   }
 }
@@ -1043,6 +1156,17 @@
 .kcard:hover .kcard__move button,
 .kcard:focus-within .kcard__move button {
   opacity: 1;
+}
+
+/* A finger cannot hover. Where there is no hover at all, the reveal device
+   has nothing to attach to and the arrows simply never appeared - leaving
+   drag-and-drop, which touch cannot do either, as the only visible way to
+   move a card. */
+@media (hover: none) {
+  .kcard__move button {
+    opacity: 1;
+    padding: 0.4rem 0.7rem;
+  }
 }
 
 .kcard__move button:hover {

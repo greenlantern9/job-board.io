@@ -606,3 +606,16 @@
   font-size: 0.6875rem;
   color: var(--faint);
 }
+
+/* ========================= MOBILE ERGONOMICS ============================ */
+/* The landing page holds its layout at phone width; what it lacked was touch
+   sizing. The header links measured 24-28px tall - reliably missable. */
+@media (max-width: 640px) {
+  .nav a {
+    padding: 0.55rem 0.5rem;
+  }
+  .btn,
+  a.btn {
+    min-height: 2.75rem;
+  }
+}
