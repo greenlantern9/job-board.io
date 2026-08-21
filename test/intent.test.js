@@ -44,10 +44,17 @@ test('silence about location stays silent', () => {
   assert.equal(wantsRemote(''), false);
 });
 
-test('the form still wins over the sentence', () => {
-  // Inference fills a gap; it must not overrule something explicitly set.
+test('the form states, the sentence suggests', () => {
+  // Changed deliberately. A bare "remote" in prose used to set the hard filter,
+  // which excluded 91 of 108 matching postings for somebody who had simply
+  // written the word. Prose now expresses a preference and the box expresses a
+  // rule - which is what this module's own docstring already claimed.
   const { filters } = applyIntent({ remoteOnly: false }, 'TPM, remote');
-  assert.equal(filters.remoteOnly, true, 'an unset box is filled from the prose');
+  assert.ok(!filters.remoteOnly, 'prose must not set the hard filter');
+  assert.equal(filters.remotePreferred, true, 'prose sets a preference');
+
+  const insistent = applyIntent({ remoteOnly: false }, 'TPM, remote only');
+  assert.equal(insistent.filters.remoteOnly, true, 'insisting is a rule');
 
   const explicit = applyIntent({ remoteOnly: true }, 'TPM, not remote');
   assert.equal(explicit.filters.remoteOnly, true, 'a ticked box is left alone');

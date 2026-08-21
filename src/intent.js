@@ -86,13 +86,37 @@ const FLEXIBLE_LOCATION = /\b(hybrid|on[-\s]?site|onsite|in[-\s]?office|in[-\s]p
  * to describe something they do not want.
  */
 export function wantsRemote(prompt) {
+  return requiresRemote(prompt) || prefersRemote(prompt);
+}
+
+/**
+ * Wording that rules other arrangements out: "remote only", "must be remote",
+ * "fully remote". Insisting is a statement, and a statement is a filter.
+ */
+export function requiresRemote(prompt) {
   const text = String(prompt || '');
   if (NEGATED_REMOTE.test(text)) return false;
-  if (REMOTE_REQUIRED.test(text)) return true;
+  return REMOTE_REQUIRED.test(text);
+}
+
+/**
+ * A bare mention of remote work. A preference, not a requirement.
+ *
+ * "Technical Program Manager, Remote, 250K" excluded 91 of the 108 matching
+ * postings, because the word was read as a rule. Somebody writing a sentence is
+ * telling you what they would like; the checkbox on the form is where they say
+ * what they will not accept. This module's own docstring says as much - the
+ * form is a statement, the prose is an inference - and inferring a hard filter
+ * from prose contradicts it.
+ */
+export function prefersRemote(prompt) {
+  const text = String(prompt || '');
+  if (NEGATED_REMOTE.test(text)) return false;
+  if (REMOTE_REQUIRED.test(text)) return false;
   if (FLEXIBLE_LOCATION.test(text)) return false;
 
-  // A bare mention counts, once the place-name uses are taken out, so
-  // "remote sensing engineer" does not quietly become a remote-only search.
+  // Place-name uses taken out first, so "remote sensing engineer" is not read
+  // as a preference for working from home.
   return /\bremote\b/i.test(text.replace(REMOTE_AS_PLACE, ' '));
 }
 
@@ -108,7 +132,8 @@ export function parseIntent(prompt) {
     // The seniority stated in the role phrase, if any - read from the phrase
     // rather than the whole prompt so "not junior" cannot set it to junior.
     seniority: phrases.length ? detectSeniorityLevel(phrases[0]) : null,
-    remoteOnly: wantsRemote(prompt),
+    remoteOnly: requiresRemote(prompt),
+    remotePreferred: prefersRemote(prompt),
   };
 }
 
@@ -128,6 +153,8 @@ export function applyIntent(filters, prompt) {
     merged.minSeniority = intent.seniority;
   }
   if (!merged.remoteOnly && intent.remoteOnly) merged.remoteOnly = true;
+  // A preference ranks; only the box, or an insistent sentence, excludes.
+  if (!merged.remoteOnly && intent.remotePreferred) merged.remotePreferred = true;
 
   return { filters: merged, intent };
 }

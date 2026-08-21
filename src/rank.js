@@ -385,9 +385,20 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
     }
   }
 
+  // A stated preference for remote work, which orders rather than excludes.
+  //
+  // Worth a lot, because it has to be visible against a relevance score that
+  // starts high for anything on-topic - but not a veto, because vetoing it threw
+  // away five sixths of the matching postings for somebody who had simply
+  // written the word in a sentence.
+  if (filters.remotePreferred && !job.remote) {
+    score -= 18;
+    reasons.push('not remote');
+  }
+
   // 3. Remote.
   if (job.remote) {
-    score += filters.remoteOnly ? 8 : 4;
+    score += filters.remoteOnly ? 8 : filters.remotePreferred ? 16 : 4;
     reasons.push('remote');
   }
 
