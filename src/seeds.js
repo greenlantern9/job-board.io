@@ -51,6 +51,10 @@ export const SEED_COMPANIES = [
   { kind: 'breezy', identifier: 'kmg-prestige', label: 'KMG Prestige', category: 'other' },
   { kind: 'gem', identifier: 'fetch', label: 'Fetch', category: 'software' },
   { kind: 'loxo', identifier: 'career-staffing-talent', label: 'Career Staffing Talent', category: 'other' },
+  { kind: 'bamboohr', identifier: 'ebm', label: 'EBM Construction', category: 'trades' },
+  { kind: 'rippling', identifier: 'dgrsystems', label: 'DGR Systems', category: 'software' },
+  { kind: 'zohorecruit', identifier: 'bruntwork', label: 'BruntWork', category: 'other' },
+  { kind: 'jobvite', identifier: 'thriftbooks', label: 'ThriftBooks', category: 'other' },
 
   // Verified additions, probed against the live APIs before being written down.
   // Weighted deliberately away from technology: the original set was entirely

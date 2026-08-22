@@ -34,6 +34,10 @@ export const SOURCE_KINDS = [
   'breezy',
   'gem',
   'loxo',
+  'bamboohr',
+  'rippling',
+  'zohorecruit',
+  'jobvite',
   'remotive',
   'arbeitnow',
   'remoteok',
@@ -46,7 +50,22 @@ export const SOURCE_KINDS = [
 ];
 
 /** Platforms discovery probes when trying to locate a named company. */
-export const ATS_KINDS = ['greenhouse', 'lever', 'ashby', 'smartrecruiters', 'recruitee', 'workable', 'personio', 'breezy', 'gem', 'loxo'];
+export const ATS_KINDS = [
+  'greenhouse',
+  'lever',
+  'ashby',
+  'smartrecruiters',
+  'recruitee',
+  'workable',
+  'personio',
+  'breezy',
+  'gem',
+  'loxo',
+  'bamboohr',
+  'rippling',
+  'zohorecruit',
+  'jobvite',
+];
 
 export class SourceError extends Error {}
 
@@ -1233,6 +1252,198 @@ async function fetchLoxo(slug) {
   });
 }
 
+async function fetchBambooHR(slug) {
+  const board = validateSlug(slug);
+  // redirect: manual for the same reason as Personio - a missing tenant does
+  // not 404, it 302s to the bamboohr.com marketing site, and following that
+  // would read as a broken response instead of a missing board.
+  const res = await fetchWithTimeout(`https://${encodeURIComponent(board)}.bamboohr.com/careers/list`, {
+    headers: { Accept: 'application/json' },
+    redirect: 'manual',
+  });
+  if (res.status >= 300 && res.status < 400) {
+    throw new SourceError('No such BambooHR board (redirected away).');
+  }
+  if (!res.ok) {
+    const err = new SourceError(`${res.status} ${res.statusText}`);
+    if (res.status === 429 || res.status >= 500) err.transient = true;
+    throw err;
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new SourceError('Response was not valid JSON');
+  }
+  const jobs = Array.isArray(data && data.result) ? data.result : [];
+  return jobs.map((job) => {
+    const loc = job.location || {};
+    const location = [loc.city, loc.state].filter(Boolean).join(', ');
+    return {
+      direct: true,
+      externalId: `bamboohr:${board}:${job.id}`,
+      title: String(job.jobOpeningName || 'Untitled role').trim(),
+      company: board,
+      location,
+      // isRemote is nullable and some boards just write REMOTE into the city,
+      // which looksRemote picks up from the location text.
+      remote: remoteFrom(job.isRemote === true, loc.city || '', job.jobOpeningName, location),
+      employment: job.employmentStatusLabel || '',
+      salaryMin: 0,
+      salaryMax: 0,
+      salaryRaw: '',
+      url: `https://${encodeURIComponent(board)}.bamboohr.com/careers/${encodeURIComponent(job.id)}`,
+      description: '',
+      // The list payload carries no dates at all; freshness on this platform
+      // can only come from diffing snapshots, which the refresh already does.
+      postedAt: '',
+    };
+  });
+}
+
+async function fetchRippling(slug) {
+  const board = validateSlug(slug);
+  const data = await fetchJson(
+    `https://api.rippling.com/platform/api/ats/v1/board/${encodeURIComponent(board)}/jobs`
+  );
+  const rows = Array.isArray(data) ? data : [];
+  // Multi-location jobs arrive as duplicate rows sharing a uuid, one per
+  // workLocation - measured on a live board. One job, its locations merged.
+  const byId = new Map();
+  for (const row of rows) {
+    const id = row.uuid || row.url || row.name;
+    const label = (row.workLocation && row.workLocation.label) || '';
+    const seen = byId.get(id);
+    if (seen) {
+      if (label && !seen.locations.includes(label)) seen.locations.push(label);
+      continue;
+    }
+    byId.set(id, { row, locations: label ? [label] : [] });
+  }
+  return [...byId.values()].map(({ row, locations }) => {
+    const location = locations.join(', ');
+    return {
+      direct: true,
+      externalId: `rippling:${board}:${row.uuid}`,
+      title: String(row.name || 'Untitled role').trim(),
+      company: board,
+      location,
+      // No remote boolean exists; the platform writes "Remote (Tampa, FL)"
+      // into the location label, which is exactly what looksRemote reads.
+      remote: remoteFrom(false, '', row.name, location),
+      employment: '',
+      salaryMin: 0,
+      salaryMax: 0,
+      salaryRaw: '',
+      url: row.url || `https://ats.rippling.com/${encodeURIComponent(board)}/jobs/${encodeURIComponent(row.uuid)}`,
+      description: '',
+      postedAt: '',
+    };
+  });
+}
+
+async function fetchZohoRecruit(slug) {
+  const board = validateSlug(slug);
+  // pagename is required and case-insensitive; "Careers" is the default page
+  // every probed tenant answered to. Any extra query param is a 400, so the
+  // URL carries exactly this one. Tenants on non-.com data centres will not
+  // resolve here - a coverage limit, not a misread.
+  const data = await fetchJson(
+    `https://${encodeURIComponent(board)}.zohorecruit.com/recruit/v2/public/Job_Openings?pagename=Careers`
+  );
+  const jobs = Array.isArray(data && data.data) ? data.data : [];
+  return jobs
+    // Is_Locked means filled or no longer accepting - listed, but not open.
+    .filter((job) => job.Is_Locked !== true)
+    .map((job) => {
+      const description = htmlToText(job.Job_Description || '');
+      const location = [job.City, job.State, job.Country].filter(Boolean).join(', ');
+      const salary = parseSalary(description);
+      const title = String(job.Posting_Title || job.Job_Opening_Name || 'Untitled role').trim();
+      return {
+        direct: true,
+        externalId: `zohorecruit:${board}:${job.id}`,
+        title,
+        company: board,
+        location,
+        remote: remoteFrom(job.Remote_Job === 'Yes', job.City || '', title),
+        employment: job.Job_Type || '',
+        salaryMin: salary.min,
+        salaryMax: salary.max,
+        salaryRaw: salary.raw,
+        url: job.$url || '',
+        description: truncate(description),
+        // "MM/DD/YYYY", which Date parses as US order - matching the source.
+        postedAt: isoOrEmpty(job.Date_Opened),
+      };
+    });
+}
+
+async function fetchJobvite(slug) {
+  const board = validateSlug(slug);
+  // Two steps, measured: the XML feed needs a per-tenant companyId that is
+  // not the slug, but every probed careers page embeds it verbatim in a
+  // getCompanyId() helper. A wrong slug 302s to search.jobvite.com rather
+  // than 404ing, so redirects mean "no such board" here too.
+  const page = await fetchWithTimeout(`https://jobs.jobvite.com/${encodeURIComponent(board)}/jobs`, {
+    headers: { Accept: 'text/html' },
+    redirect: 'manual',
+  });
+  if (page.status >= 300 && page.status < 400) {
+    throw new SourceError('No such Jobvite board (redirected away).');
+  }
+  if (!page.ok) {
+    const err = new SourceError(`${page.status} ${page.statusText}`);
+    if (page.status === 429 || page.status >= 500) err.transient = true;
+    throw err;
+  }
+  const html = await page.text();
+  const idMatch = html.match(/getCompanyId\(\)\s*\{\s*return\s*'([^']+)'/);
+  if (!idMatch) {
+    throw new SourceError('Jobvite careers page carried no company id.');
+  }
+
+  const res = await fetchWithTimeout(
+    `https://app.jobvite.com/CompanyJobs/Xml.aspx?c=${encodeURIComponent(idMatch[1])}`,
+    { headers: { Accept: 'application/xml, text/xml' } }
+  );
+  if (!res.ok) {
+    const err = new SourceError(`${res.status} ${res.statusText}`);
+    if (res.status === 429 || res.status >= 500) err.transient = true;
+    throw err;
+  }
+  const xml = await res.text();
+
+  const pick = (block, tag) => {
+    const match = block.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+    if (!match) return '';
+    return decodeEntities(match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')).trim();
+  };
+
+  const entries = xml.match(/<job>[\s\S]*?<\/job>/g) || [];
+  return entries.map((block) => {
+    const title = htmlToText(pick(block, 'title')) || 'Untitled role';
+    const description = htmlToText(pick(block, 'description') || pick(block, 'briefdescription'));
+    const location = pick(block, 'location');
+    const salary = parseSalary(description);
+    return {
+      direct: true,
+      externalId: `jobvite:${board}:${pick(block, 'id')}`,
+      title,
+      company: board,
+      location,
+      remote: remoteFrom(false, '', title, location),
+      employment: pick(block, 'jobtype'),
+      salaryMin: salary.min,
+      salaryMax: salary.max,
+      salaryRaw: salary.raw,
+      url: pick(block, 'detail-url'),
+      description: truncate(description),
+      postedAt: isoOrEmpty(pick(block, 'date')),
+    };
+  });
+}
+
 export const AGGREGATOR_KINDS = ['adzuna', 'themuse', 'weworkremotely', 'jobicy', 'remotive', 'arbeitnow', 'remoteok', 'himalayas'];
 
 /** Exposed so the matching rules can be tested without hitting a live feed. */
@@ -1468,6 +1679,14 @@ export async function fetchSource(source, options = {}) {
       return fetchRecruitee(source.identifier);
     case 'breezy':
       return fetchBreezy(source.identifier);
+    case 'bamboohr':
+      return fetchBambooHR(source.identifier);
+    case 'rippling':
+      return fetchRippling(source.identifier);
+    case 'zohorecruit':
+      return fetchZohoRecruit(source.identifier);
+    case 'jobvite':
+      return fetchJobvite(source.identifier);
     case 'gem':
       return fetchGem(source.identifier);
     case 'loxo':

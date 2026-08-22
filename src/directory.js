@@ -44,7 +44,7 @@ const CANDIDATE_SCHEMA = {
           kind: {
             type: 'string',
             description:
-              'Which system hosts their board: greenhouse, lever, ashby, smartrecruiters, recruitee, workable, personio, breezy, gem or loxo',
+              'Which system hosts their board: greenhouse, lever, ashby, smartrecruiters, recruitee, workable, personio, breezy, gem, loxo, bamboohr, rippling, zohorecruit or jobvite',
           },
           identifier: {
             type: 'string',
