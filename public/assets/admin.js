@@ -259,6 +259,8 @@ const fmt = (n) => Number(n || 0).toLocaleString();
         tr.append(td);
       }
       body.append(tr);
+      // Returned so a caller can add cells that are controls, not text.
+      return tr;
     };
 
     const host = document.getElementById('ops-cards');
@@ -301,9 +303,9 @@ const fmt = (n) => Number(n || 0).toLocaleString();
 
       const accounts = document.querySelector('#accounts-table tbody');
       accounts.textContent = '';
-      if (!(ops.accounts || []).length) fill('#accounts-table', 8, 'No accounts yet.');
+      if (!(ops.accounts || []).length) fill('#accounts-table', 9, 'No accounts yet.');
       for (const a of ops.accounts || []) {
-        rowOf(accounts, [
+        const tr = rowOf(accounts, [
           [a.email || '—', 'name'],
           [signInState(a), 'num'],
           [fmt(a.boards), 'num'],
@@ -313,6 +315,54 @@ const fmt = (n) => Number(n || 0).toLocaleString();
           [fmt(a.errors), 'num'],
           [ago(a.last_login_at || a.created_at), 'num'],
         ]);
+
+        // A reset link, minted on demand and handed over however you reach the
+        // person - with delivery off, this is the only recovery path there is.
+        // Minting kills the account's earlier unused links, so the button asks
+        // before doing anything.
+        const cell = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Reset link';
+        btn.style.cssText = 'font:inherit;font-size:.75rem;padding:.3rem .6rem;cursor:pointer;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)';
+        btn.addEventListener('click', async () => {
+          if (!confirm('Mint a password-reset link for ' + (a.email || 'this account') + '? Earlier unused reset links stop working.')) return;
+          btn.disabled = true;
+          btn.textContent = 'Minting…';
+          try {
+            const res = await fetch('/api/admin/reset-link', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ userId: a.id }),
+            });
+            const out = await res.json();
+            if (!res.ok || !out.ok) throw new Error(out.error || 'Could not mint the link (' + res.status + ')');
+            cell.textContent = '';
+            const link = document.createElement('input');
+            link.readOnly = true;
+            link.value = out.url;
+            link.style.cssText = 'font-family:var(--mono);font-size:.7rem;width:14rem;padding:.3rem .4rem;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)';
+            link.addEventListener('focus', () => link.select());
+            const note = document.createElement('div');
+            note.style.cssText = 'font-family:var(--mono);font-size:.65rem;color:var(--ink-faint);margin-top:.25rem';
+            note.textContent = 'works once · expires in an hour';
+            cell.append(link, note);
+            try {
+              await navigator.clipboard.writeText(out.url);
+              note.textContent = 'copied · works once · expires in an hour';
+            } catch (err) {
+              // Clipboard needs a user gesture and a secure context; the field
+              // is selectable either way.
+            }
+            link.focus();
+          } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Reset link';
+            alert(err.message);
+          }
+        });
+        cell.append(btn);
+        tr.append(cell);
       }
 
       const errors = document.querySelector('#errors-table tbody');
@@ -348,7 +398,7 @@ const fmt = (n) => Number(n || 0).toLocaleString();
       p.textContent = err.message;
       el.append(h, p);
       host.append(el);
-      fill('#accounts-table', 8, 'Unavailable — ' + err.message);
+      fill('#accounts-table', 9, 'Unavailable — ' + err.message);
       fill('#errors-table', 4, 'Unavailable — ' + err.message);
       fill('#feedback-table', 4, 'Unavailable — ' + err.message);
     }

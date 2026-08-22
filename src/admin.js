@@ -16,7 +16,8 @@
 // its edge, and that guarantee does not hold on a workers.dev URL or any other
 // path that reaches the Worker without passing through Access.
 
-import { queryOne } from './db.js';
+import { queryOne, run, nowIso, isoIn } from './db.js';
+import { sha256Hex, newSecretToken } from './crypto.js';
 import { recentErrors, errorSummary, accountActivity, listFeedback, notionConfigured } from './ops.js';
 import { estimateCost } from './budget.js';
 
@@ -351,4 +352,51 @@ async function queryAllSafe(env, sql, ...args) {
   } catch {
     return [];
   }
+}
+
+/**
+ * Mint a password-reset link for an account, for the owner to hand over
+ * out-of-band - in person, by text, however they reach the person. With email
+ * delivery switched off, the mail flow cannot send its link anywhere, which
+ * made the owner the only recovery path for every account on the service
+ * while giving them no way to actually be one.
+ *
+ * The token is the same object the mail flow mints: stored as a SHA-256 hash,
+ * kind 'reset', one hour, single use. Consuming it goes through the ordinary
+ * resetPassword handler, so it also clears the lockout counter and destroys
+ * every existing session - this path changes who can start a reset, never
+ * what a reset does. The owner never sees or sets the password itself.
+ */
+export async function mintResetLink(env, { userId } = {}) {
+  const user = await queryOne(env, 'SELECT id, email FROM users WHERE id = ?', String(userId || ''));
+  if (!user) return { error: 'No such account.' };
+
+  // Outstanding unused reset tokens die first. The mail flow tolerates several
+  // live at once because each left the building already; this one is displayed,
+  // and a fresh mint should mean earlier handed-out links stop working.
+  await run(
+    env,
+    `UPDATE email_tokens SET used_at = ? WHERE user_id = ? AND kind = 'reset' AND used_at = ''`,
+    nowIso(),
+    user.id
+  );
+
+  const token = newSecretToken();
+  const expiresAt = isoIn(60 * 60 * 1000);
+  await run(
+    env,
+    `INSERT INTO email_tokens (token_hash, user_id, kind, expires_at, created_at)
+     VALUES (?, ?, 'reset', ?, ?)`,
+    await sha256Hex(token),
+    user.id,
+    expiresAt,
+    nowIso()
+  );
+
+  return {
+    ok: true,
+    email: user.email,
+    url: `${env.SITE_URL || 'https://job-boards.io'}/reset?token=${encodeURIComponent(token)}`,
+    expiresAt,
+  };
 }

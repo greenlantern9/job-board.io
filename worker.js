@@ -28,7 +28,7 @@ import { topUpCatalogue, loadPublishedLists, classifyBoards } from './src/direct
 import { recordError } from './src/ops.js';
 import { VERSION } from './src/version.js';
 import { runNotifications, applyUnsubscribe } from './src/notify.js';
-import { adminGate, adminStats, adminOperations } from './src/admin.js';
+import { adminGate, adminStats, adminOperations, mintResetLink } from './src/admin.js';
 
 const ROUTES = { ...AUTH_ROUTES, ...APP_ROUTES };
 
@@ -154,7 +154,12 @@ async function handleRequest(request, env, executionCtx) {
 
   // The admin surface. Gated identically whether it is the page or its data,
   // because a dashboard whose API is open is not gated at all.
-  if (url.pathname === '/admin' || url.pathname === '/api/admin/stats' || url.pathname === '/api/admin/operations') {
+  if (
+    url.pathname === '/admin' ||
+    url.pathname === '/api/admin/stats' ||
+    url.pathname === '/api/admin/operations' ||
+    url.pathname === '/api/admin/reset-link'
+  ) {
     const ctx = await buildContext(env, request);
     const gate = await adminGate(env, request, ctx);
 
@@ -204,6 +209,13 @@ async function handleRequest(request, env, executionCtx) {
 
     if (url.pathname === '/api/admin/operations') {
       return json(await adminOperations(env));
+    }
+    if (url.pathname === '/api/admin/reset-link') {
+      // POST only: minting invalidates the account's earlier reset links, so a
+      // prefetch or a crawler must not be able to trigger it.
+      if (request.method !== 'POST') return notFound('No such endpoint.');
+      const body = await request.json().catch(() => ({}));
+      return json(await mintResetLink(env, { userId: body.userId }));
     }
     if (url.pathname === '/api/admin/stats') {
       return json(await adminStats(env));
