@@ -20,6 +20,7 @@ import { reserveCall, recordUsage } from './budget.js';
 import { CATEGORIES, getCategory, inferCategory } from './categories.js';
 import { GREENHOUSE_BOARDS } from './greenhouse-directory.js';
 import { ATS_BOARDS } from './ats-directory.js';
+import { ATS_BOARDS_2 } from './ats-directory-2.js';
 
 /** Names put forward per discovery run. Each one costs a probe, and probes are
  *  subrequests inside an already-tight budget. */
@@ -589,6 +590,7 @@ export async function loadPublishedLists(env) {
   const published = [
     ...GREENHOUSE_BOARDS.map((board) => ({ kind: 'greenhouse', ...board })),
     ...ATS_BOARDS,
+    ...ATS_BOARDS_2,
   ];
   const missing = published.filter(
     (board) => !have.has(`${board.kind}:${board.identifier}`.toLowerCase())
