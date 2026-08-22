@@ -1,4 +1,4 @@
-import { expandPhrase } from './synonyms.js';
+import { expandPhrase, INDUSTRY_TERMS } from './synonyms.js';
 import { SEED_COMPANIES } from './seeds.js';
 
 // The deterministic ranking heuristic.
@@ -170,10 +170,17 @@ const IS_NUMERIC = /^\d+(\.\d+)?k?$/;
  * about synonyms, which is why a board could let a job through and then rank it
  * as though it barely matched.
  */
-function phraseMatches(phrase, text) {
+function phraseMatches(phrase, text, employerText = '') {
   const slots = expandPhrase(phrase);
   if (slots.length === 0) return false;
-  return slots.every((family) => family.some((alternative) => text.includes(alternative)));
+  return slots.every((family) => {
+    if (family.some((alternative) => text.includes(alternative))) return true;
+    // An industry slot may be satisfied by the employer instead of the
+    // posting: the industry describes the company. Role slots never are -
+    // that would make every posting at a PM-hiring shop count as a PM.
+    const isIndustry = family.some((alternative) => INDUSTRY_TERMS.has(alternative));
+    return isIndustry && employerText !== '' && family.some((alternative) => employerText.includes(alternative));
+  });
 }
 
 export function criteriaTerms(prompt) {
@@ -332,9 +339,10 @@ export function contextAdjustment(job, { filters = {} } = {}) {
   return { delta, notes };
 }
 
-export function heuristicScore(job, { prompt = '', filters = {}, profile = null } = {}) {
+export function heuristicScore(job, { prompt = '', filters = {}, profile = null, employerText = '' } = {}) {
   const haystack = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
   const titleText = String(job.title || '').toLowerCase();
+  const employer = String(employerText || '').toLowerCase();
   const reasons = [];
   const gaps = [];
   let score = 40; // neutral baseline
@@ -351,12 +359,19 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
   let roleMissing = false;
 
   if (phrases.length > 0) {
-    const best = phrases.find((phrase) => phraseMatches(phrase, titleText));
-    const inBody = phrases.find((phrase) => phraseMatches(phrase, haystack));
+    const best = phrases.find((phrase) => phraseMatches(phrase, titleText, employer));
+    const inBody = phrases.find((phrase) => phraseMatches(phrase, haystack, employer));
 
     if (best) {
       score += 40;
-      reasons.unshift(`title matches "${best}"`);
+      // Say when the industry leg came from the employer rather than the
+      // posting - the score is the same, but the reason should not claim the
+      // title contains a word it does not.
+      reasons.unshift(
+        phraseMatches(best, titleText)
+          ? `title matches "${best}"`
+          : `title matches "${best}" - the industry is what this employer does`
+      );
     } else if (inBody) {
       score += 12;
       roleInBodyOnly = true;
@@ -377,6 +392,10 @@ export function heuristicScore(job, { prompt = '', filters = {}, profile = null 
       if (haystack.includes(term)) {
         hits++;
         if (titleText.includes(term)) titleHits++;
+      } else if (INDUSTRY_TERMS.has(term) && employer.includes(term)) {
+        // Same rule at word level: an industry word the posting omits still
+        // counts when the employer's own titles carry it.
+        hits++;
       }
     }
     if (hits > 0) {

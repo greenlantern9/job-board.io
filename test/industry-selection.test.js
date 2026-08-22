@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { expandTerm } from '../src/synonyms.js';
+import { heuristicScore } from '../src/rank.js';
 
 // Why "Aerospace Program Manager" returned two jobs from a thirty-thousand
 // employer catalogue: the industry word describes the employer, while
@@ -42,4 +43,28 @@ test('family hits flip the ordering the bug produced', () => {
 
 test('an unknown word still matches literally', () => {
   assert.deepEqual(expandTerm('kubernetes'), ['kubernetes']);
+});
+
+test('an industry slot is satisfied by the employer; a role slot never is', () => {
+  // The posting that motivated this: 'Program Manager, Mission Operations' at
+  // Anduril, searched as 'Aerospace Program Manager'. Without employer context
+  // it scored 20 - 'not the role you described' - and died below the model
+  // gate before the model could read the company name. The employer's own
+  // title corpus carries avionics and propulsion, which is what aerospace
+  // means in titles.
+  const job = { title: 'Program Manager, Mission Operations', company: 'Anduril Industries', location: '', description: '', remote: false };
+  const prompt = 'Aerospace Program Manager';
+  const corpus = 'senior avionics engineer propulsion technician mission software lead program manager';
+
+  const without = heuristicScore(job, { prompt });
+  const withCorpus = heuristicScore(job, { prompt, employerText: corpus });
+  assert.ok(without.score < 35, 'the pre-fix score should sit below the model gate, or this test is not testing the bug');
+  assert.ok(withCorpus.score >= 75, 'employer context should lift the true match to a strong admit');
+  assert.ok(/industry is what this employer does/.test(withCorpus.reason), 'the reason must not claim the title contains a word it does not');
+
+  // The guard: the role itself must still come from the posting. A marketing
+  // job at the same aerospace employer gains nothing.
+  const marketing = { title: 'Marketing Coordinator', company: 'Anduril Industries', location: '', description: '', remote: false };
+  const guarded = heuristicScore(marketing, { prompt, employerText: corpus });
+  assert.ok(guarded.score < 35, 'a role slot became employer-satisfiable - every posting at a PM shop now counts as a PM');
 });

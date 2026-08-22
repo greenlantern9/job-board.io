@@ -20,6 +20,26 @@
  * video work and with writing, and lives in both families rather than being
  * forced into one.
  */
+/**
+ * Industries, kept apart from role families because they answer a different
+ * question. A role word describes the posting and must be found in it; an
+ * industry word describes the employer, and may be satisfied by what the
+ * employer as a whole advertises - a "Program Manager, Mission Operations" at
+ * a company whose other titles say avionics and propulsion IS an aerospace
+ * program manager, whatever that one title omits.
+ */
+const INDUSTRY_FAMILIES = [
+  ['aerospace', 'aeronautics', 'astronautics', 'avionics', 'spacecraft',
+    'propulsion', 'orbital', 'satellite', 'spaceflight', 'aircraft', 'aviation'],
+  ['defense', 'defence', 'missile', 'radar', 'warfighter', 'munitions'],
+  ['biotech', 'biotechnology', 'genomics', 'bioinformatics', 'biologics',
+    'immunology', 'oncology'],
+  ['fintech', 'payments', 'banking', 'lending', 'trading', 'brokerage'],
+];
+
+/** Every word that names or implies an industry rather than a role. */
+export const INDUSTRY_TERMS = new Set(INDUSTRY_FAMILIES.flat());
+
 const FAMILIES = [
   // Camera, image and moving image, deliberately one family.
   //
@@ -75,12 +95,7 @@ const FAMILIES = [
   // use. Kept to words that are unambiguous in a job title - "flight",
   // "launch" and "mission" are used by airlines, marketing and product teams
   // respectively, and a wrong synonym is worse than a missing one.
-  ['aerospace', 'aeronautics', 'astronautics', 'avionics', 'spacecraft',
-    'propulsion', 'orbital', 'satellite', 'spaceflight', 'aircraft', 'aviation'],
-  ['defense', 'defence', 'missile', 'radar', 'warfighter', 'munitions'],
-  ['biotech', 'biotechnology', 'genomics', 'bioinformatics', 'biologics',
-    'immunology', 'oncology'],
-  ['fintech', 'payments', 'banking', 'lending', 'trading', 'brokerage'],
+  ...INDUSTRY_FAMILIES,
 ];
 
 /** Joining words that carry no requirement of their own. */

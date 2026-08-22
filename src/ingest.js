@@ -483,9 +483,26 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     //
     // The bar sits just above the out-of-field ceiling, so a posting from the
     // wrong discipline can never be admitted however well it scores otherwise.
+    // What each employer's postings collectively say, from the batch just
+    // fetched - the corpus classification stores as vocabulary, rebuilt here
+    // for free. It lets an industry word the title omits be read off the
+    // employer: a "Program Manager, Mission Operations" at a company whose
+    // other titles say avionics is an aerospace program manager.
+    const employerTexts = new Map();
+    for (const entry of toInsert) {
+      const key = String(entry.job.company || '').trim().toLowerCase();
+      if (!key) continue;
+      employerTexts.set(key, (employerTexts.get(key) || '') + ' ' + String(entry.job.title || '').toLowerCase());
+    }
+    const employerTextOf = (entry) => employerTexts.get(String(entry.job.company || '').trim().toLowerCase()) || '';
+
     const ranked = toInsert
       .map((entry) => {
-        const scored = heuristicScore(entry.job, { prompt: board.prompt, filters: activeFilters });
+        const scored = heuristicScore(entry.job, {
+          prompt: board.prompt,
+          filters: activeFilters,
+          employerText: employerTextOf(entry),
+        });
         return { entry, score: scored.score, reason: scored.reason };
       })
       .sort((a, b) => b.score - a.score);
@@ -530,7 +547,11 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
     const rescored = shortlist
       .filter(({ entry }) => matchesFilters(entry.job, activeFilters))
       .map(({ entry }) => {
-        const scored = heuristicScore(entry.job, { prompt: board.prompt, filters: activeFilters });
+        const scored = heuristicScore(entry.job, {
+          prompt: board.prompt,
+          filters: activeFilters,
+          employerText: employerTextOf(entry),
+        });
         return { entry, score: scored.score, reason: scored.reason };
       })
       .sort((a, b) => b.score - a.score);
@@ -635,8 +656,8 @@ export async function refreshBoard(env, boardRow, { selfHost, batchSize = ADD_BA
       .filter((entry) => !entry.job.direct && entry.job.url)
       .sort(
         (a, b) =>
-          heuristicScore(b.job, { prompt: board.prompt, filters: activeFilters }).score -
-          heuristicScore(a.job, { prompt: board.prompt, filters: activeFilters }).score
+          heuristicScore(b.job, { prompt: board.prompt, filters: activeFilters, employerText: employerTextOf({ job: b.job }) }).score -
+          heuristicScore(a.job, { prompt: board.prompt, filters: activeFilters, employerText: employerTextOf({ job: a.job }) }).score
       );
 
     if (needChecking.length > 0) {
