@@ -187,3 +187,20 @@ test('every connected platform is tracked, present or not', async () => {
   const html = fs.readFileSync(new URL('../public/admin.html', import.meta.url), 'utf8');
   assert.ok(html.includes('<th>Jobs live</th><th>Last read</th>'), 'the catalogue table lost its tracking columns');
 });
+
+test('field coverage includes every category, gaps most of all', async () => {
+  // The visualization exists to show gaps, and a GROUP BY omits exactly those
+  // rows - a field with no employers vanishes instead of being flagged, which
+  // is how 'registered nurse returned nothing' stayed invisible. The server
+  // merges the full CATEGORIES roster with the counted rows; the client names
+  // the two gap kinds differently because they are different problems.
+  const admin = fs.readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8');
+  assert.ok(admin.includes("import { CATEGORIES } from './categories.js'"), 'the category roster import is gone');
+  assert.ok(admin.includes('CATEGORIES.map((cat) =>'), 'empty categories are omitted from coverage again');
+  assert.ok(admin.includes('SUM(job_count) AS jobs FROM company_directory'), 'coverage lost its live-jobs measure');
+  const client = fs.readFileSync(new URL('../public/assets/admin.js', import.meta.url), 'utf8');
+  assert.ok(client.includes('no live openings'), 'the employers-but-no-jobs gap lost its label');
+  assert.ok(client.includes('no employers at all'), 'the empty-field gap lost its label');
+  const html = fs.readFileSync(new URL('../public/admin.html', import.meta.url), 'utf8');
+  assert.ok(html.includes('id="coverage"'), 'the coverage section is gone from the page');
+});

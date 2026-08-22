@@ -140,6 +140,46 @@ const fmt = (n) => Number(n || 0).toLocaleString();
         }
       }
 
+      // Coverage by field: rebuilt on every load, so Refresh keeps it current
+      // while the cron fills the catalogue underneath. Bars scale to the
+      // strongest field; a field with employers but no live openings and a
+      // field with nothing at all are different problems, so they are named
+      // differently rather than both rendering as a short bar.
+      const coverage = document.getElementById('coverage');
+      if (coverage) {
+        coverage.textContent = '';
+        const fields = cat.byField || [];
+        const maxJobs = Math.max(1, ...fields.map((f) => f.jobs || 0));
+        for (const f of fields) {
+          const row = document.createElement('div');
+          row.className = 'coverage__row';
+          const label = document.createElement('span');
+          label.className = 'coverage__label';
+          label.textContent = f.label || f.category;
+          const track = document.createElement('div');
+          track.className = 'coverage__track';
+          if (f.jobs > 0) {
+            const meter = document.createElement('div');
+            meter.className = 'coverage__meter';
+            const bar = document.createElement('div');
+            bar.className = 'coverage__bar';
+            bar.style.width = Math.max(0.6, (f.jobs / maxJobs) * 100) + '%';
+            meter.append(bar);
+            const value = document.createElement('span');
+            value.className = 'coverage__value';
+            value.textContent = fmt(f.jobs) + ' jobs · ' + fmt(f.n) + ' employers';
+            track.append(meter, value);
+          } else {
+            const chip = document.createElement('span');
+            chip.className = 'coverage__gap';
+            chip.textContent = f.n > 0 ? 'gap — ' + fmt(f.n) + ' employers, no live openings' : 'gap — no employers at all';
+            track.append(chip);
+          }
+          row.append(label, track);
+          coverage.append(row);
+        }
+      }
+
       const catBody = document.querySelector('#catalogue-table tbody');
       catBody.textContent = '';
       if (!cat.byPlatform.length) {

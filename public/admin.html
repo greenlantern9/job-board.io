@@ -87,6 +87,69 @@
 
   header { display: flex; flex-direction: column; gap: .75rem; }
 
+  /* Coverage bars. One measure (live jobs), one hue, gaps as labeled chips -
+     never color alone. Values sit in text ink beside every bar, so the chart
+     doubles as its own table. */
+  .coverage {
+    display: flex;
+    flex-direction: column;
+    gap: .45rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.1rem 1.25rem;
+  }
+  .coverage__row {
+    display: grid;
+    grid-template-columns: minmax(10rem, 14rem) 1fr;
+    align-items: center;
+    gap: .8rem;
+  }
+  .coverage__label {
+    font-size: .8125rem;
+    color: var(--ink-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .coverage__track {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .55rem;
+  }
+  /* The bar scales inside its own column; the value lives in the next one.
+     A bar at 100% and its label on the same flex line was 145px of page
+     overflow, measured. */
+  .coverage__meter {
+    min-width: 0;
+  }
+  .coverage__bar {
+    height: 12px;
+    border-radius: 0 4px 4px 0;
+    background: var(--free);
+    min-width: 2px;
+  }
+  .coverage__value {
+    font-family: var(--mono);
+    font-size: .7rem;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .coverage__gap {
+    font-family: var(--mono);
+    font-size: .675rem;
+    padding: .1rem .5rem;
+    border-radius: 999px;
+    background: var(--inert-wash);
+    color: var(--inert);
+    white-space: nowrap;
+  }
+  @media (max-width: 560px) {
+    .coverage__row { grid-template-columns: 1fr; gap: .15rem; }
+  }
+
   /* A heading with a control on the same line. The h2 keeps its own bottom
      margin so the gap below this row matches every other section's. */
   .section-head {
@@ -336,6 +399,12 @@
         <tbody><tr><td colspan="8">Loading…</td></tr></tbody>
       </table>
     </div>
+
+    <h3 style="margin-top:2rem">Coverage by field</h3>
+    <p>Live openings the catalogue can actually serve, per field someone can
+      search. The bars answer where a new board lands well; the flagged rows are
+      where one comes back thin or empty.</p>
+    <div class="coverage" id="coverage"></div>
 
     <h3 style="margin-top:2rem">Catalogue readiness</h3>
     <p>Whether the catalogue is in a state to serve a board, and when the

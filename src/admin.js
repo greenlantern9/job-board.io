@@ -21,6 +21,7 @@ import { sha256Hex, newSecretToken } from './crypto.js';
 import { recentErrors, errorSummary, accountActivity, listFeedback, notionConfigured } from './ops.js';
 import { estimateCost } from './budget.js';
 import { ATS_KINDS } from './sources.js';
+import { CATEGORIES } from './categories.js';
 
 /** Verified JWKS, cached per team domain for the process lifetime of the
  *  isolate. Key rotation is infrequent and a stale key fails closed. */
@@ -257,11 +258,22 @@ export async function adminStats(env) {
       .sort()
       .map((kind) => ({ kind, n: 0, unclassified: 0, quiet: 0, retired: 0, slow: 0, jobs: 0, last_read: '' })),
   ];
-  const catalogueFields = await queryAllSafe(
+  const fieldRows = await queryAllSafe(
     env,
-    `SELECT category, COUNT(*) AS n FROM company_directory
-     WHERE category <> '' GROUP BY category ORDER BY n DESC`
+    `SELECT category, COUNT(*) AS n, SUM(job_count) AS jobs FROM company_directory
+     WHERE category <> '' GROUP BY category ORDER BY jobs DESC`
   );
+
+  // Coverage is only readable when the gaps are in the picture. A GROUP BY
+  // omits categories with no employers, and those are precisely the fields
+  // where a board comes up empty - "registered nurse returned nothing" was a
+  // gap exactly like this, invisible because nothing counted it. Every field
+  // the product offers appears, zeros included, with its human label.
+  const byId = new Map(fieldRows.map((row) => [row.category, row]));
+  const catalogueFields = CATEGORIES.map((cat) => {
+    const row = byId.get(cat.id) || { n: 0, jobs: 0 };
+    return { category: cat.id, label: cat.label, n: row.n || 0, jobs: row.jobs || 0 };
+  }).sort((x, y) => y.jobs - x.jobs || y.n - x.n);
 
   // Readiness of the shared catalogue, and the largest sources in it.
   //
