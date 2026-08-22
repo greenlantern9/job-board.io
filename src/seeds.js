@@ -42,6 +42,13 @@ export const SEED_COMPANIES = [
   { kind: 'ashby', identifier: 'linear', label: 'Linear', category: 'software' },
   { kind: 'smartrecruiters', identifier: 'BoschGroup', label: 'Bosch', category: 'software' },
 
+  // One live board per newly connected platform, each probed before being
+  // written down. They put the new kinds into the catalogue immediately;
+  // classification then reads the real titles and corrects the field.
+  { kind: 'recruitee', identifier: 'bunq', label: 'bunq', category: 'software' },
+  { kind: 'workable', identifier: 'blueground', label: 'Blueground', category: 'other' },
+  { kind: 'personio', identifier: 'everphone', label: 'Everphone', category: 'software' },
+
   // Verified additions, probed against the live APIs before being written down.
   // Weighted deliberately away from technology: the original set was entirely
   // software employers, which is why a photography or coaching board found

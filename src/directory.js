@@ -43,7 +43,8 @@ const CANDIDATE_SCHEMA = {
           name: { type: 'string', description: 'The employer name' },
           kind: {
             type: 'string',
-            description: 'Which system hosts their board: greenhouse, lever, ashby or smartrecruiters',
+            description:
+              'Which system hosts their board: greenhouse, lever, ashby, smartrecruiters, recruitee, workable or personio',
           },
           identifier: {
             type: 'string',

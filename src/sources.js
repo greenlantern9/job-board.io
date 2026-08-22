@@ -28,6 +28,9 @@ export const SOURCE_KINDS = [
   'lever',
   'ashby',
   'smartrecruiters',
+  'recruitee',
+  'workable',
+  'personio',
   'remotive',
   'arbeitnow',
   'remoteok',
@@ -40,7 +43,7 @@ export const SOURCE_KINDS = [
 ];
 
 /** Platforms discovery probes when trying to locate a named company. */
-export const ATS_KINDS = ['greenhouse', 'lever', 'ashby', 'smartrecruiters'];
+export const ATS_KINDS = ['greenhouse', 'lever', 'ashby', 'smartrecruiters', 'recruitee', 'workable', 'personio'];
 
 export class SourceError extends Error {}
 
@@ -910,6 +913,124 @@ async function fetchSmartRecruiters(slug) {
 }
 
 /** Kinds whose identifier is a search query, not a company. */
+
+async function fetchRecruitee(slug) {
+  const board = validateSlug(slug);
+  const data = await fetchJson(`https://${encodeURIComponent(board)}.recruitee.com/api/offers`);
+  const offers = Array.isArray(data && data.offers) ? data.offers : [];
+  return offers
+    // The live sample only ever showed status "published", but filtering is
+    // cheap and a draft leaking into a board would be confusing to explain.
+    .filter((offer) => !offer.status || offer.status === 'published')
+    .map((offer) => {
+      const description = htmlToText([offer.description, offer.requirements].filter(Boolean).join(' '));
+      const declared = offer.salary || {};
+      const salary = parseSalary(description);
+      return {
+        direct: true,
+        externalId: `recruitee:${board}:${offer.id}`,
+        title: String(offer.title || 'Untitled role').trim(),
+        company: String(offer.company_name || board).trim(),
+        location: offer.location || [offer.city, offer.country].filter(Boolean).join(', '),
+        // remote is a real boolean on this platform; hybrid is not remote,
+        // and the sample data showed hybrid roles with remote: false.
+        remote: offer.remote === true || looksRemote(offer.location, offer.title),
+        employment: offer.employment_type_code || '',
+        salaryMin: Number(declared.min) || salary.min,
+        salaryMax: Number(declared.max) || salary.max,
+        salaryRaw: salary.raw,
+        url: offer.careers_url || '',
+        description: truncate(description),
+        // Timestamps arrive as "2026-08-10 07:53:21 UTC", which Date parses.
+        postedAt: isoOrEmpty(offer.published_at || offer.created_at),
+      };
+    });
+}
+
+async function fetchWorkable(slug) {
+  const board = validateSlug(slug);
+  const data = await fetchJson(`https://apply.workable.com/api/v1/widget/accounts/${encodeURIComponent(board)}`);
+  const jobs = Array.isArray(data && data.jobs) ? data.jobs : [];
+  const company = String((data && data.name) || board).trim();
+  return jobs.map((job) => {
+    const location = [job.city, job.state, job.country].filter(Boolean).join(', ');
+    return {
+      direct: true,
+      externalId: `workable:${board}:${job.shortcode}`,
+      title: String(job.title || 'Untitled role').trim(),
+      company,
+      location,
+      // telecommuting is the platform's own remote flag.
+      remote: job.telecommuting === true || looksRemote(location, job.title),
+      employment: job.employment_type || '',
+      // The widget listing carries no salary and no description; the probe
+      // for a per-job detail endpoint 404d, so these rank on their titles
+      // like an unhydrated greenhouse posting does.
+      salaryMin: 0,
+      salaryMax: 0,
+      salaryRaw: '',
+      url: job.url || job.shortlink || '',
+      description: '',
+      postedAt: isoOrEmpty(job.published_on || job.created_at),
+    };
+  });
+}
+
+async function fetchPersonio(slug) {
+  const board = validateSlug(slug);
+  // redirect: manual, because a missing tenant does not 404 - it 307s to
+  // personio.com, and following that lands on a marketing page that would
+  // read as "invalid response" instead of "no such board".
+  const res = await fetchWithTimeout(`https://${encodeURIComponent(board)}.jobs.personio.de/xml?language=en`, {
+    headers: { Accept: 'application/xml, text/xml' },
+    redirect: 'manual',
+  });
+  if (res.status >= 300 && res.status < 400) {
+    throw new SourceError('No such Personio board (redirected away).');
+  }
+  if (!res.ok) {
+    const err = new SourceError(`${res.status} ${res.statusText}`);
+    if (res.status === 429 || res.status >= 500) err.transient = true;
+    throw err;
+  }
+  const xml = await res.text();
+
+  const pick = (block, tag) => {
+    const match = block.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+    if (!match) return '';
+    return decodeEntities(match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')).trim();
+  };
+
+  const positions = xml.match(/<position>[\s\S]*?<\/position>/g) || [];
+  return positions.map((block) => {
+    const id = pick(block, "id");
+    const title = htmlToText(pick(block, "name")) || "Untitled role";
+    // The description is several named CDATA sections; their headings are
+    // navigation, the values are the content.
+    const values = (block.match(/<value>[\s\S]*?<\/value>/g) || [])
+      .map((v) => htmlToText(decodeEntities(v.replace(/<\/?value>/g, "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1"))))
+      .join(" ");
+    const offices = [pick(block, "office"), ...((block.match(/<office>[^<]*<\/office>/g) || []).slice(1).map((o) => o.replace(/<\/?office>/g, "")))];
+    const location = [...new Set(offices.filter(Boolean))].join(", ");
+    const salary = parseSalary(values);
+    return {
+      direct: true,
+      externalId: `personio:${board}:${id}`,
+      title,
+      company: board,
+      location,
+      remote: looksRemote(location, title, pick(block, "schedule")),
+      employment: pick(block, "employmentType") || pick(block, "schedule"),
+      salaryMin: salary.min,
+      salaryMax: salary.max,
+      salaryRaw: salary.raw,
+      url: `https://${encodeURIComponent(board)}.jobs.personio.de/job/${encodeURIComponent(id)}`,
+      description: truncate(values),
+      postedAt: isoOrEmpty(pick(block, "createdAt")),
+    };
+  });
+}
+
 export const AGGREGATOR_KINDS = ['adzuna', 'themuse', 'weworkremotely', 'jobicy', 'remotive', 'arbeitnow', 'remoteok', 'himalayas'];
 
 /** Exposed so the matching rules can be tested without hitting a live feed. */
@@ -1141,6 +1262,12 @@ export async function fetchSource(source, options = {}) {
       return fetchLever(source.identifier);
     case 'ashby':
       return fetchAshby(source.identifier);
+    case 'recruitee':
+      return fetchRecruitee(source.identifier);
+    case 'workable':
+      return fetchWorkable(source.identifier);
+    case 'personio':
+      return fetchPersonio(source.identifier);
     case 'smartrecruiters':
       return fetchSmartRecruiters(source.identifier);
     case 'remotive':
