@@ -511,7 +511,7 @@
           <text x="22" y="52" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Company boards</text>
           <text x="22" y="72" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">greenhouse · lever · ashby</text>
           <text x="22" y="88" font-family="var(--mono)" font-size="11" fill="var(--ink-soft)">smartrecruiters</text>
-          <text x="22" y="106" font-family="var(--mono)" font-size="11" fill="var(--free)">~11,900 catalogued · live count above</text>
+          <text x="22" y="106" font-family="var(--mono)" font-size="11" fill="var(--free)">~30,400 catalogued · live count above</text>
 
           <rect x="8" y="128" width="220" height="86" rx="6" fill="var(--free-wash)" stroke="var(--free)" stroke-width="1"/>
           <text x="22" y="150" font-family="var(--sans)" font-size="13" font-weight="600" fill="var(--ink)">Aggregators</text>
@@ -607,7 +607,7 @@
             <td class="name">greenhouse<br>lever<br>ashby<br>smartrecruiters</td>
             <td>whole company listing</td>
             <td><span class="tag tag--free">works</span></td>
-            <td>Roughly twelve thousand catalogued employers across fourteen platforms - ten joined the original four once their public endpoints were verified live. Presence in the current listing proves a job is live, so no link check is needed.</td>
+            <td>Roughly thirty thousand catalogued employers across fourteen platforms. Presence in the current listing proves a job is live, so no link check is needed.</td>
           </tr>
           <tr>
             <td class="name">weworkremotely</td>
@@ -667,21 +667,24 @@
     <p>
       No applicant tracking system publishes a directory. Greenhouse has thousands of customers and
       no way to list them — <code>/v1/boards</code> and <code>/v1/jobs</code> both return 404, while
-      <code>/v1/boards/stripe/jobs</code> returns 200. There is no sitemap on any of the four
-      platforms. The only way to reach a board is with a slug you already know.
+      <code>/v1/boards/stripe/jobs</code> returns 200. None of these
+      platforms publishes a directory. The only way to reach a board is with a slug you already know.
     </p>
     <p>
       That used to mean buying slugs one at a time: a web search per company, paid for by whoever
-      wanted that field first. The catalogue reached 113 boards that way. Published lists of
-      employers then supplied the rest — <strong>Greenhouse, Lever, SmartRecruiters and Ashby</strong>,
-      taking the catalogue to roughly twelve thousand employers and removing the need to pay for
-      discovery on any of them.
+      wanted that field first. The catalogue reached 113 boards that way. Published lists then
+      supplied the rest in two waves: <strong>Greenhouse, Lever, SmartRecruiters and Ashby</strong>
+      brought it to roughly twelve thousand, and a second wave across the ten newer platforms —
+      BambooHR the largest of them — added another eighteen thousand, taking the catalogue past
+      thirty thousand employers with discovery paid for on none of them.
     </p>
     <p>
-      None of the lists was taken on trust. Samples spread across each were probed through this
-      app's own connectors before anything was committed — the same code that will read them in
-      production, rather than a script written to agree with the list. <strong>Every slug
-      resolved</strong>; not one 404 across 180 probes.
+      No list was taken on trust, and the vetting matched each list's measured risk. Clean lists
+      were sample-probed through this app's own connectors — the same code that reads them in
+      production. Lists that showed rot in sampling had <strong>every single row probed</strong>
+      before being written down, which is how Jobvite's list went from "58% alive" in a
+      twelve-board sample to 10 boards of 153 in the full pass: the sample had hit the one lucky
+      cluster. What production seeds is what already answered once.
     </p>
 
     <div class="scroll">
@@ -694,6 +697,11 @@
           <tr><td class="name">ashby</td><td class="num">40</td><td class="num">40</td><td class="num">0</td><td>Publishes an open-roles count, so only boards with a live posting were taken.</td></tr>
           <tr><td class="name">lever</td><td class="num">40</td><td class="num">36</td><td class="num">0</td><td>Also carries a count; its dormant half — 3,112 boards — was left out.</td></tr>
           <tr><td class="name">smartrecruiters</td><td class="num">40</td><td class="num">22</td><td class="num">0</td><td>No openings column exists for this platform, so all of it is here and about half is quiet on any day.</td></tr>
+          <tr><td class="name">bamboohr</td><td class="num">12</td><td class="num">12</td><td class="num">0</td><td>Came with a daily crawler's live-openings count; the dormant half — 7,691 boards — was left out, the Lever precedent.</td></tr>
+          <tr><td class="name">workable · rippling · breezy · recruitee · gem</td><td class="num">60</td><td class="num">42</td><td class="num">0</td><td>Twelve boards each, zero hard errors; quiet boards are employers between hiring rounds, not misses.</td></tr>
+          <tr><td class="name">personio</td><td class="num">2,489</td><td class="num">—</td><td class="num">718</td><td>Every row probed after sampling showed decay. The dead tenants 404 on .de and .com alike; 1,771 live boards were kept.</td></tr>
+          <tr><td class="name">jobvite</td><td class="num">153</td><td class="num">—</td><td class="num">143</td><td>Every row probed: 93% had churned away. The ten real boards were kept; the rest never reached the database.</td></tr>
+          <tr><td class="name">zohorecruit</td><td class="num">26</td><td class="num">—</td><td class="num">18</td><td>Real tenants whose public API answers ORG_NOT_FOUND — a careers page that works but cannot be read. Eight kept.</td></tr>
         </tbody>
       </table>
     </div>
@@ -747,7 +755,7 @@
 
     <h3 style="margin-top:2rem">Choosing which employers a board connects</h3>
     <p>
-      A board connects 36 employers out of nearly twelve thousand, so which 36 decides almost
+      A board connects 36 employers out of more than thirty thousand, so which 36 decides almost
       everything. They used to be chosen by field and by size, and neither says whether a company is
       hiring for the role somebody searched. Of eighteen employers on one programme-management
       board, eight were advertising programme-management roles — and none of those eight had been
@@ -913,7 +921,7 @@
       <div class="card">
         <h3>Classifying employers</h3>
         <span class="cost">free</span>
-        <p>Not a model call at all. Reads the titles already on a board, counts them to decide the field, and keeps the words themselves so a later search can tell whether this employer advertises the role being looked for. Cheaper and more accurate than asking a model to guess from a company name — and it is why seeding twelve thousand employers costs nothing.</p>
+        <p>Not a model call at all. Reads the titles already on a board, counts them to decide the field, and keeps the words themselves so a later search can tell whether this employer advertises the role being looked for. Cheaper and more accurate than asking a model to guess from a company name — and it is why seeding thirty thousand employers costs nothing.</p>
       </div>
     </div>
 

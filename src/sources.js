@@ -125,14 +125,24 @@ async function fetchWithTimeout(url, init = {}) {
   try {
     return await attempt(url, init, FETCH_TIMEOUT_MS);
   } catch (err) {
-    if (err.name !== 'AbortError') throw new SourceError(err.message || 'Network error');
+    if (err.name !== 'AbortError') {
+      const wrapped = new SourceError(err.message || 'Network error');
+      // Running out of subrequest budget is this Worker's own weather, not
+      // the board disappearing. During a full-queue classification burn a
+      // tick can brush the ceiling, and a hard strike here would retire
+      // healthy employers three budget accidents later.
+      if (/too many subrequests/i.test(String(err.message))) wrapped.transient = true;
+      throw wrapped;
+    }
     // One more go. The first attempt competes with every other fetch in the
     // same refresh; the second usually has the road to itself.
     try {
       return await attempt(url, init, RETRY_TIMEOUT_MS);
     } catch (retryErr) {
       if (retryErr.name !== 'AbortError') {
-        throw new SourceError(retryErr.message || 'Network error');
+        const wrapped = new SourceError(retryErr.message || 'Network error');
+        if (/too many subrequests/i.test(String(retryErr.message))) wrapped.transient = true;
+        throw wrapped;
       }
       const timedOut = new SourceError(
         `Source did not respond within ${Math.round((FETCH_TIMEOUT_MS + RETRY_TIMEOUT_MS) / 1000)}s`
