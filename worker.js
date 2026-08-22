@@ -28,7 +28,7 @@ import { topUpCatalogue, loadPublishedLists, classifyBoards } from './src/direct
 import { recordError } from './src/ops.js';
 import { VERSION } from './src/version.js';
 import { runNotifications, applyUnsubscribe } from './src/notify.js';
-import { adminGate, adminStats, adminOperations, mintResetLink } from './src/admin.js';
+import { adminGate, adminStats, adminOperations, mintResetLink, termCoverage } from './src/admin.js';
 
 const ROUTES = { ...AUTH_ROUTES, ...APP_ROUTES };
 
@@ -158,7 +158,8 @@ async function handleRequest(request, env, executionCtx) {
     url.pathname === '/admin' ||
     url.pathname === '/api/admin/stats' ||
     url.pathname === '/api/admin/operations' ||
-    url.pathname === '/api/admin/reset-link'
+    url.pathname === '/api/admin/reset-link' ||
+    url.pathname === '/api/admin/term-coverage'
   ) {
     const ctx = await buildContext(env, request);
     const gate = await adminGate(env, request, ctx);
@@ -209,6 +210,9 @@ async function handleRequest(request, env, executionCtx) {
 
     if (url.pathname === '/api/admin/operations') {
       return json(await adminOperations(env));
+    }
+    if (url.pathname === '/api/admin/term-coverage') {
+      return json(await termCoverage(env, url.searchParams.get('q')));
     }
     if (url.pathname === '/api/admin/reset-link') {
       // POST only: minting invalidates the account's earlier reset links, so a

@@ -137,6 +137,46 @@
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
+  .termcheck {
+    display: flex;
+    gap: .6rem;
+    flex-wrap: wrap;
+  }
+  .termcheck__input {
+    flex: 1 1 14rem;
+    font: inherit;
+    font-size: 16px;
+    padding: .5rem .75rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .termcheck__btn {
+    font: inherit;
+    font-size: .85rem;
+    font-weight: 500;
+    padding: .5rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .termcheck__btn:hover { border-color: var(--ink-faint); }
+  .termcheck__head {
+    font-size: .9375rem;
+    margin: 1rem 0 .6rem;
+  }
+  .termcheck__head strong { font-variant-numeric: tabular-nums; }
+  .termcheck__top {
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--ink-faint);
+    margin-top: .6rem;
+    line-height: 1.7;
+  }
+
   .coverage__gap {
     font-family: var(--mono);
     font-size: .675rem;
@@ -405,6 +445,18 @@
       search. The bars answer where a new board lands well; the flagged rows are
       where one comes back thin or empty.</p>
     <div class="coverage" id="coverage"></div>
+
+    <h3 style="margin-top:2rem">Coverage for a topic</h3>
+    <p>The fields above are broad on purpose - "aerospace" is not a field, it is
+      a word employers put in their titles. This asks the vocabulary the
+      classifier keeps: type a word and see how much of the catalogue advertises
+      it, matched exactly the way employer selection matches it.</p>
+    <form class="termcheck" id="term-form">
+      <input class="termcheck__input" id="term-input" type="search"
+        placeholder="aerospace, nurse, kubernetes…" autocomplete="off" />
+      <button class="termcheck__btn" type="submit">Check coverage</button>
+    </form>
+    <div id="term-result"></div>
 
     <h3 style="margin-top:2rem">Catalogue readiness</h3>
     <p>Whether the catalogue is in a state to serve a board, and when the

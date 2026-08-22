@@ -429,3 +429,75 @@ export async function mintResetLink(env, { userId } = {}) {
     expiresAt,
   };
 }
+
+
+/**
+ * Coverage for one topic word (or a few), answered from the vocabulary the
+ * classifier already keeps. The fields chart shows the ten broad categories,
+ * but "how many aerospace roles do I have" is a topic question - aerospace
+ * employers sit inside software or trades - and the title_terms column is
+ * where that answer lives.
+ *
+ * The input is normalized exactly the way titleTerms() normalizes titles
+ * (lowercase, the same separator class, three-letter minimum), and matching is
+ * exact-word - ' ' || title_terms || ' ' LIKE '% word %' - which is the SQL
+ * spelling of the Set membership employer selection uses. Same semantics in,
+ * same semantics out: what this reports matching is what a board would reach.
+ * Several words mean all of them, since "aerospace engineer" asks for
+ * employers advertising both.
+ */
+export async function termCoverage(env, rawQuery) {
+  const terms = [
+    ...new Set(
+      String(rawQuery || '')
+        .toLowerCase()
+        .split(/[^a-z0-9+#]+/)
+        .filter((word) => word.length >= 3)
+    ),
+  ].slice(0, 3);
+  if (!terms.length) return { error: 'Give me at least one word of three letters or more.' };
+
+  // Terms are already reduced to [a-z0-9+#], so no LIKE wildcard can survive
+  // normalization; the parameters are bound regardless.
+  const where = terms.map(() => `' ' || title_terms || ' ' LIKE ?`).join(' AND ');
+  const binds = terms.map((term) => `% ${term} %`);
+
+  const totals = await queryOne(
+    env,
+    `SELECT COUNT(*) AS n, COALESCE(SUM(job_count), 0) AS jobs
+     FROM company_directory WHERE failed_streak < 3 AND ${where}`,
+    ...binds
+  );
+  const byField = await queryAllSafe(
+    env,
+    `SELECT category, COUNT(*) AS n, COALESCE(SUM(job_count), 0) AS jobs
+     FROM company_directory WHERE failed_streak < 3 AND ${where}
+     GROUP BY category ORDER BY jobs DESC`,
+    ...binds
+  );
+  const employers = await queryAllSafe(
+    env,
+    `SELECT name, kind, identifier, job_count FROM company_directory
+     WHERE failed_streak < 3 AND ${where}
+     ORDER BY job_count DESC LIMIT 8`,
+    ...binds
+  );
+
+  const labels = new Map(CATEGORIES.map((cat) => [cat.id, cat.label]));
+  return {
+    terms,
+    employers: (totals && totals.n) || 0,
+    jobs: (totals && totals.jobs) || 0,
+    byField: byField.map((row) => ({
+      category: row.category,
+      label: labels.get(row.category) || row.category || 'unclassified',
+      n: row.n || 0,
+      jobs: row.jobs || 0,
+    })),
+    top: employers.map((row) => ({
+      name: row.name || row.identifier,
+      kind: row.kind,
+      jobs: row.job_count || 0,
+    })),
+  };
+}

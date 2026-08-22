@@ -495,3 +495,74 @@ const fmt = (n) => Number(n || 0).toLocaleString();
   if (refreshBtn) refreshBtn.addEventListener('click', refreshAll);
 
   refreshAll();
+
+  // Topic coverage: one word in, the vocabulary answer out. Reuses the
+  // coverage bar classes so the two charts read as one system.
+  const termForm = document.getElementById('term-form');
+  const termResult = document.getElementById('term-result');
+  if (termForm && termResult) {
+    termForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const q = document.getElementById('term-input').value.trim();
+      if (!q) return;
+      termResult.textContent = 'Checking…';
+      try {
+        const res = await fetch('/api/admin/term-coverage?q=' + encodeURIComponent(q));
+        if (!res.ok) throw new Error('Coverage lookup failed (' + res.status + ')');
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        termResult.textContent = '';
+        const head = document.createElement('p');
+        head.className = 'termcheck__head';
+        if (!data.employers) {
+          head.textContent = 'Nothing in the catalogue advertises "' + data.terms.join(' ') + '" yet — either a real gap, or those employers are still being classified.';
+          termResult.append(head);
+          return;
+        }
+        const strongEl = document.createElement('strong');
+        strongEl.textContent = fmt(data.employers) + ' employers · ' + fmt(data.jobs) + ' live jobs';
+        head.append(strongEl, document.createTextNode(' advertise "' + data.terms.join(' ') + '"'));
+        termResult.append(head);
+
+        const chart = document.createElement('div');
+        chart.className = 'coverage';
+        const maxJobs = Math.max(1, ...data.byField.map((f) => f.jobs || 0));
+        for (const f of data.byField) {
+          const row = document.createElement('div');
+          row.className = 'coverage__row';
+          const label = document.createElement('span');
+          label.className = 'coverage__label';
+          label.textContent = f.label;
+          const track = document.createElement('div');
+          track.className = 'coverage__track';
+          const meter = document.createElement('div');
+          meter.className = 'coverage__meter';
+          const bar = document.createElement('div');
+          bar.className = 'coverage__bar';
+          bar.style.width = Math.max(0.6, (f.jobs / maxJobs) * 100) + '%';
+          meter.append(bar);
+          const value = document.createElement('span');
+          value.className = 'coverage__value';
+          value.textContent = fmt(f.jobs) + ' jobs · ' + fmt(f.n) + ' employers';
+          track.append(meter, value);
+          row.append(label, track);
+          chart.append(row);
+        }
+        termResult.append(chart);
+
+        if (data.top && data.top.length) {
+          const top = document.createElement('p');
+          top.className = 'termcheck__top';
+          top.textContent = 'Largest: ' + data.top.map((e) => e.name + ' (' + fmt(e.jobs) + ')').join(' · ');
+          termResult.append(top);
+        }
+      } catch (err) {
+        termResult.textContent = '';
+        const p = document.createElement('p');
+        p.className = 'termcheck__head';
+        p.textContent = err.message;
+        termResult.append(p);
+      }
+    });
+  }
