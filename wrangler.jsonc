@@ -42,7 +42,11 @@
   // minimum granularity is one minute; five keeps invocations cheap while
   // still feeling live behind the 20s client poll.
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    // Two offset schedules, not one: each firing is a separate invocation with
+    // its own subrequest budget, so this doubles catalogue throughput. All tick
+    // work is due-based, so firing more often only drains queues faster; a
+    // freak overlap would duplicate reads, never corrupt writes.
+    "crons": ["*/5 * * * *", "2-59/5 * * * *"]
   },
 
   // Per-IP throttles. Login/signup is the one endpoint worth protecting at the
