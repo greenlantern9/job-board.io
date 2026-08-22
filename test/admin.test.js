@@ -171,3 +171,19 @@ test('ordinary board endpoints are not owner-gated', async () => {
   assert.notEqual(APP_ROUTES['GET /api/boards'].admin, true);
   assert.notEqual(APP_ROUTES['POST /api/boards/create'].admin, true);
 });
+
+test('every connected platform is tracked, present or not', async () => {
+  // The per-platform table is built from a GROUP BY over company_directory,
+  // which silently omits any kind with no rows - and absent reads as 'not
+  // connected', the wrong answer for a live connector waiting on employer
+  // lists. The server merges ATS_KINDS in as zero rows; losing that merge
+  // makes new platforms invisible exactly when someone asks whether they work.
+  const admin = fs.readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8');
+  assert.ok(admin.includes("import { ATS_KINDS } from './sources.js'"), 'the kind roster import is gone');
+  assert.ok(admin.includes('ATS_KINDS.filter((kind) => !seen.has(kind))'), 'zero-row platforms are omitted again');
+  for (const metric of ['SUM(job_count) AS jobs', 'MAX(verified_at) AS last_read', 'AS quiet', 'AS slow']) {
+    assert.ok(admin.includes(metric), 'per-platform metric missing: ' + metric);
+  }
+  const html = fs.readFileSync(new URL('../public/admin.html', import.meta.url), 'utf8');
+  assert.ok(html.includes('<th>Jobs live</th><th>Last read</th>'), 'the catalogue table lost its tracking columns');
+});

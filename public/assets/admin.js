@@ -145,14 +145,29 @@ const fmt = (n) => Number(n || 0).toLocaleString();
       if (!cat.byPlatform.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 4;
+        td.colSpan = 8;
         td.textContent = 'Catalogue is empty.';
         tr.append(td);
         catBody.append(tr);
       }
       for (const row of cat.byPlatform) {
         const tr = document.createElement('tr');
-        for (const [value, cls] of [[row.kind, 'name'], [fmt(row.n), 'num'], [fmt(row.unclassified), 'num'], [fmt(row.retired), 'num']]) {
+        // Platforms with nothing seeded yet are rendered dimmed rather than
+        // omitted - absent reads as "not connected", which is the wrong
+        // answer for a live connector waiting on employer lists.
+        if (!row.n) tr.style.opacity = '0.45';
+        const classified = (row.n || 0) - (row.unclassified || 0);
+        const cells = [
+          [row.kind, 'name'],
+          [fmt(row.n), 'num'],
+          [fmt(classified), 'num'],
+          [fmt(row.quiet || 0), 'num'],
+          [fmt(row.slow || 0), 'num'],
+          [fmt(row.retired), 'num'],
+          [fmt(row.jobs || 0), 'num'],
+          [row.last_read ? when(row.last_read) : '—', 'num'],
+        ];
+        for (const [value, cls] of cells) {
           const td = document.createElement('td');
           td.className = cls;
           td.textContent = value;

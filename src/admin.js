@@ -20,6 +20,7 @@ import { queryOne, run, nowIso, isoIn } from './db.js';
 import { sha256Hex, newSecretToken } from './crypto.js';
 import { recentErrors, errorSummary, accountActivity, listFeedback, notionConfigured } from './ops.js';
 import { estimateCost } from './budget.js';
+import { ATS_KINDS } from './sources.js';
 
 /** Verified JWKS, cached per team domain for the process lifetime of the
  *  isolate. Key rotation is infrequent and a stale key fails closed. */
@@ -232,14 +233,30 @@ export async function adminStats(env) {
   // database access. Classified and unclassified are counted separately
   // because they mean different things: a board with no category is in the
   // table but reaches nobody, since directoryFor matches an exact category.
-  const catalogue = await queryAllSafe(
+  const cataloguePlatforms = await queryAllSafe(
     env,
     `SELECT kind,
             COUNT(*) AS n,
             SUM(CASE WHEN category = '' THEN 1 ELSE 0 END) AS unclassified,
-            SUM(CASE WHEN failed_streak >= 3 THEN 1 ELSE 0 END) AS retired
+            SUM(CASE WHEN category = '' AND verified_at <> '' AND job_count = 0 THEN 1 ELSE 0 END) AS quiet,
+            SUM(CASE WHEN failed_streak >= 3 THEN 1 ELSE 0 END) AS retired,
+            SUM(CASE WHEN timeout_streak > 0 THEN 1 ELSE 0 END) AS slow,
+            SUM(job_count) AS jobs,
+            MAX(verified_at) AS last_read
      FROM company_directory GROUP BY kind ORDER BY n DESC`
   );
+
+  // Every connected platform appears, including the ones nothing has seeded
+  // yet. A kind absent from the table reads as "not connected", which is the
+  // wrong answer for a connector that is live and simply has one seed row or
+  // none - the zero is the honest number, so it is shown.
+  const seen = new Set(cataloguePlatforms.map((row) => row.kind));
+  const catalogue = [
+    ...cataloguePlatforms,
+    ...ATS_KINDS.filter((kind) => !seen.has(kind))
+      .sort()
+      .map((kind) => ({ kind, n: 0, unclassified: 0, quiet: 0, retired: 0, slow: 0, jobs: 0, last_read: '' })),
+  ];
   const catalogueFields = await queryAllSafe(
     env,
     `SELECT category, COUNT(*) AS n FROM company_directory
