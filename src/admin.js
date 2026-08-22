@@ -22,6 +22,7 @@ import { recentErrors, errorSummary, accountActivity, listFeedback, notionConfig
 import { estimateCost } from './budget.js';
 import { ATS_KINDS } from './sources.js';
 import { CATEGORIES } from './categories.js';
+import { expandTerm } from './synonyms.js';
 
 /** Verified JWKS, cached per team domain for the process lifetime of the
  *  isolate. Key rotation is infrequent and a stale key fails closed. */
@@ -459,8 +460,16 @@ export async function termCoverage(env, rawQuery) {
 
   // Terms are already reduced to [a-z0-9+#], so no LIKE wildcard can survive
   // normalization; the parameters are bound regardless.
-  const where = terms.map(() => `' ' || title_terms || ' ' LIKE ?`).join(' AND ');
-  const binds = terms.map((term) => `% ${term} %`);
+  // Selection expands each word to its synonym family, so coverage must
+  // count the same reach or its number stops predicting anything. Family
+  // members OR together inside a term; the user's terms still AND.
+  const families = terms.map((term) =>
+    expandTerm(term).filter((member) => /^[a-z0-9+#]{3,}$/.test(member))
+  );
+  const where = families
+    .map((family) => '(' + family.map(() => `' ' || title_terms || ' ' LIKE ?`).join(' OR ') + ')')
+    .join(' AND ');
+  const binds = families.flatMap((family) => family.map((member) => `% ${member} %`));
 
   const totals = await queryOne(
     env,

@@ -20,6 +20,7 @@ import { reserveCall, recordUsage } from './budget.js';
 import { CATEGORIES, getCategory, inferCategory } from './categories.js';
 import { GREENHOUSE_BOARDS } from './greenhouse-directory.js';
 import { ATS_BOARDS } from './ats-directory.js';
+import { expandTerm } from './synonyms.js';
 import { ATS_BOARDS_2 } from './ats-directory-2.js';
 import { WORKDAY_BOARDS } from './workday-directory.js';
 
@@ -138,9 +139,14 @@ export async function directoryFor(env, category, { limit = 20, exclude = [], te
   // hiring for the role somebody searched for. The pool is drawn wide and then
   // ordered by how many of the searched-for words appear in the titles that
   // employer actually posts, which classification recorded while reading them.
+  // Each searched word carries its family: "aerospace" alone matches almost
+  // no employer's titles, but avionics, propulsion and spacecraft - the words
+  // aerospace employers actually put in titles - stand in for it. A hit is
+  // any family member present, counted once per word the user searched.
   const wanted = terms
     .map((term) => String(term || '').toLowerCase().trim())
-    .filter((term) => term.length >= 3);
+    .filter((term) => term.length >= 3)
+    .map((term) => expandTerm(term));
 
   const rank = (rows) => {
     if (wanted.length === 0) return rows;
@@ -150,7 +156,7 @@ export async function directoryFor(env, category, { limit = 20, exclude = [], te
         // "technology" at every employer in the catalogue, which scored them
         // all alike and left size deciding again.
         const vocabulary = new Set(String(row.title_terms || '').split(' '));
-        const hits = wanted.filter((term) => vocabulary.has(term)).length;
+        const hits = wanted.filter((family) => family.some((term) => vocabulary.has(term))).length;
         return { row, hits };
       })
       // Relevance, then reliability, then size. A board that keeps timing out
@@ -202,7 +208,7 @@ export async function directoryFor(env, category, { limit = 20, exclude = [], te
   // construction firms while Databricks and OpenAI sat unused.
   const hitsOf = (row) => {
     const vocabulary = new Set(String(row.title_terms || '').split(' '));
-    return wanted.filter((term) => vocabulary.has(term)).length;
+    return wanted.filter((family) => family.some((term) => vocabulary.has(term))).length;
   };
 
   if (wanted.length > 0) {

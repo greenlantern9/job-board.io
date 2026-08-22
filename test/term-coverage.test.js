@@ -47,8 +47,24 @@ test('input is normalized the way titles were normalized', async () => {
   const out = await termCoverage(fakeEnv(log), '  Aerospace, ENGINEER!! at ');
   assert.deepEqual(out.terms, ['aerospace', 'engineer'], 'normalization diverged from titleTerms');
   const totals = log.find((l) => /COUNT\(\*\)/.test(l.sql));
-  assert.deepEqual(totals.params, ['% aerospace %', '% engineer %']);
-  assert.ok(totals.sql.includes('LIKE ? AND'), 'several words should mean all of them');
+  // aerospace expands to its industry family (selection matches families, and
+  // coverage must count the same reach); every member binds its own padded
+  // pattern, ORed within the term.
+  assert.ok(totals.params.includes('% aerospace %'));
+  assert.ok(totals.params.includes('% avionics %'), 'the aerospace family is not reaching the coverage query');
+  assert.ok(totals.params.includes('% engineer %'));
+  assert.ok(/\) AND \(/.test(totals.sql), 'terms should still AND while families OR');
+});
+
+test('coverage counts the same reach selection has', async () => {
+  // The tool's one promise: its number predicts what a board would connect.
+  // Selection expands families, so an employer advertising avionics but never
+  // the word aerospace must count as aerospace coverage.
+  const log = [];
+  await termCoverage(fakeEnv(log), 'aerospace');
+  const totals = log.find((l) => /COUNT\(\*\)/.test(l.sql));
+  assert.ok(totals.params.length > 1, 'aerospace matched only its literal word - Anduril and SpaceX are invisible again');
+  assert.ok(totals.sql.split('LIKE ?').length - 1 === totals.params.length, 'binds and placeholders diverged');
 });
 
 test('retired employers do not count as coverage', async () => {

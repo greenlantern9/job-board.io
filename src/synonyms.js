@@ -62,6 +62,25 @@ const FAMILIES = [
   ['contract', 'contractor', 'freelance', 'freelancer', 'self-employed', 'gig',
     'project-based', 'project based', 'temporary'],
   ['part time', 'part-time', 'casual', 'seasonal'],
+
+  // Industries whose name almost never appears in their own job titles.
+  //
+  // Measured on live boards before this family existed: Anduril's 2,237 titles
+  // carry avionics, propulsion, mission and rocket but not "aerospace";
+  // SpaceX's 2,179 carry avionics, propulsion and satellite - not "aerospace"
+  // and not even "program". A search for "aerospace program manager" therefore
+  // scored both companies at or below a generic SaaS shop, because the
+  // industry word describes the employer while matching reads titles. The
+  // family maps the industry word to the title words its employers actually
+  // use. Kept to words that are unambiguous in a job title - "flight",
+  // "launch" and "mission" are used by airlines, marketing and product teams
+  // respectively, and a wrong synonym is worse than a missing one.
+  ['aerospace', 'aeronautics', 'astronautics', 'avionics', 'spacecraft',
+    'propulsion', 'orbital', 'satellite', 'spaceflight', 'aircraft', 'aviation'],
+  ['defense', 'defence', 'missile', 'radar', 'warfighter', 'munitions'],
+  ['biotech', 'biotechnology', 'genomics', 'bioinformatics', 'biologics',
+    'immunology', 'oncology'],
+  ['fintech', 'payments', 'banking', 'lending', 'trading', 'brokerage'],
 ];
 
 /** Joining words that carry no requirement of their own. */
