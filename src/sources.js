@@ -86,7 +86,10 @@ async function attempt(url, init, timeoutMs) {
       ...init,
       signal: controller.signal,
       headers: { 'User-Agent': USER_AGENT, ...(init.headers || {}) },
-      redirect: 'follow',
+      // The caller's choice must survive the spread: fetchPersonio passes
+      // 'manual' because a missing tenant 307s rather than 404s, and silently
+      // following that redirect made dead tenants look like live empty boards.
+      redirect: (init && init.redirect) || 'follow',
     });
   } finally {
     clearTimeout(timer);
@@ -134,6 +137,35 @@ const ENTITIES = {
   ldquo: '"',
   rdquo: '"',
   hellip: '...',
+  // The characters European boards actually use. Numeric references were
+  // already handled; these are the named forms that survived into Personio
+  // descriptions and locations.
+  euro: '\u20ac',
+  pound: '\u00a3',
+  yen: '\u00a5',
+  cent: '\u00a2',
+  copy: '\u00a9',
+  reg: '\u00ae',
+  trade: '\u2122',
+  deg: '\u00b0',
+  middot: '\u00b7',
+  bull: '\u2022',
+  sect: '\u00a7',
+  auml: '\u00e4', Auml: '\u00c4',
+  ouml: '\u00f6', Ouml: '\u00d6',
+  uuml: '\u00fc', Uuml: '\u00dc',
+  szlig: '\u00df',
+  eacute: '\u00e9', Eacute: '\u00c9',
+  egrave: '\u00e8', ecirc: '\u00ea',
+  agrave: '\u00e0', aacute: '\u00e1', acirc: '\u00e2',
+  ccedil: '\u00e7',
+  ntilde: '\u00f1',
+  oacute: '\u00f3', ograve: '\u00f2', ocirc: '\u00f4',
+  uacute: '\u00fa', ugrave: '\u00f9',
+  iacute: '\u00ed',
+  aring: '\u00e5', Aring: '\u00c5',
+  oslash: '\u00f8', Oslash: '\u00d8',
+  aelig: '\u00e6',
 };
 
 export function decodeEntities(text) {
@@ -924,8 +956,30 @@ async function fetchRecruitee(slug) {
     .filter((offer) => !offer.status || offer.status === 'published')
     .map((offer) => {
       const description = htmlToText([offer.description, offer.requirements].filter(Boolean).join(' '));
-      const declared = offer.salary || {};
       const salary = parseSalary(description);
+      // The declared salary object carries a period, and ignoring it stored
+      // monthly figures as annual - a 12x error feeding a hard filter. Yearly
+      // passes through; monthly and weekly annualize; hourly and daily are too
+      // noisy to trust; an unstated period only counts if it already looks
+      // annual, mirroring parseSalary's own sub-10k guard.
+      const declared = offer.salary || {};
+      const per = String(declared.period || '').toLowerCase();
+      const annualize =
+        per.includes('year') || per.includes('annual') ? 1
+        : per.includes('month') ? 12
+        : per.includes('week') ? 52
+        : per === '' ? 1
+        : 0;
+      const declaredMin = Number(declared.min) || 0;
+      const declaredMax = Number(declared.max) || 0;
+      const usable =
+        annualize > 0 && (per !== '' || Math.max(declaredMin, declaredMax) >= 10000);
+      const decMin = usable ? declaredMin * annualize : 0;
+      const decMax = usable ? declaredMax * annualize : 0;
+      const declaredRaw =
+        usable && (declaredMin || declaredMax)
+          ? `${[declaredMin, declaredMax].filter(Boolean).join('-')} ${declared.currency || ''} per ${per || 'year'}`.trim()
+          : '';
       return {
         direct: true,
         externalId: `recruitee:${board}:${offer.id}`,
@@ -934,11 +988,15 @@ async function fetchRecruitee(slug) {
         location: offer.location || [offer.city, offer.country].filter(Boolean).join(', '),
         // remote is a real boolean on this platform; hybrid is not remote,
         // and the sample data showed hybrid roles with remote: false.
-        remote: offer.remote === true || looksRemote(offer.location, offer.title),
+        remote: remoteFrom(
+          offer.remote === true,
+          [offer.city, offer.state_name].filter(Boolean).join(', '),
+          offer.title
+        ),
         employment: offer.employment_type_code || '',
-        salaryMin: Number(declared.min) || salary.min,
-        salaryMax: Number(declared.max) || salary.max,
-        salaryRaw: salary.raw,
+        salaryMin: decMin || salary.min,
+        salaryMax: decMax || salary.max,
+        salaryRaw: salary.raw || declaredRaw,
         url: offer.careers_url || '',
         description: truncate(description),
         // Timestamps arrive as "2026-08-10 07:53:21 UTC", which Date parses.
@@ -961,7 +1019,7 @@ async function fetchWorkable(slug) {
       company,
       location,
       // telecommuting is the platform's own remote flag.
-      remote: job.telecommuting === true || looksRemote(location, job.title),
+      remote: remoteFrom(job.telecommuting === true, [job.city, job.state].filter(Boolean).join(', '), job.title),
       employment: job.employment_type || '',
       // The widget listing carries no salary and no description; the probe
       // for a per-job detail endpoint 404d, so these rank on their titles
@@ -1010,8 +1068,14 @@ async function fetchPersonio(slug) {
     const values = (block.match(/<value>[\s\S]*?<\/value>/g) || [])
       .map((v) => htmlToText(decodeEntities(v.replace(/<\/?value>/g, "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1"))))
       .join(" ");
-    const offices = [pick(block, "office"), ...((block.match(/<office>[^<]*<\/office>/g) || []).slice(1).map((o) => o.replace(/<\/?office>/g, "")))];
-    const location = [...new Set(offices.filter(Boolean))].join(", ");
+    // Every office through the same pipeline: paired tags only (a
+    // self-closing <office/> contributes nothing instead of derailing a lazy
+    // match into the next element), each decoded and trimmed, then deduped -
+    // an office spelled once encoded and once plain is one office.
+    const offices = (block.match(/<office\b[^>/]*>([^<]*)<\/office>/g) || [])
+      .map((o) => decodeEntities(o.replace(/<[^>]+>/g, '')).trim())
+      .filter(Boolean);
+    const location = [...new Set(offices)].join(', ');
     const salary = parseSalary(values);
     return {
       direct: true,
