@@ -68,3 +68,28 @@ test('the alerts endpoint reports delivery alongside verification', () => {
     'the alerts page cannot tell whether delivery is configured'
   );
 });
+
+test('forgot-password does not promise a mail it cannot send', () => {
+  // The reset flow records a token and returns ok either way (anti-enumeration)
+  // - but with no provider the send is skipped, and the old client told people
+  // a link was on its way regardless. A forgotten password became a silent
+  // permanent lockout: the person just waited for a mail that cannot arrive.
+  const routes = fs.readFileSync(new URL('../src/routes/auth.js', import.meta.url), 'utf8');
+  assert.ok(
+    routes.includes('ok: true, emailDelivery: Boolean(env.RESEND_API_KEY)'),
+    'the forgot endpoint hides whether delivery is even possible'
+  );
+  const app = fs.readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8');
+  assert.ok(
+    app.includes('Password reset is not available yet'),
+    'the client claims a reset link is on its way when nothing can be sent'
+  );
+});
+
+test('the accounts table can answer whether an account is locked', () => {
+  const ops = fs.readFileSync(new URL('../src/ops.js', import.meta.url), 'utf8');
+  assert.ok(
+    ops.includes('u.locked_until, u.failed_logins'),
+    'lock state dropped from accountActivity - /admin cannot answer lockout questions'
+  );
+});

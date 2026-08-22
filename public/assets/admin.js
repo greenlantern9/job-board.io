@@ -286,12 +286,26 @@ const fmt = (n) => Number(n || 0).toLocaleString();
           ops.feedbackForwarding ? 'var(--free)' : 'var(--inert)')
       );
 
+      // The sign-in column answers "is this account locked out" - the question
+      // this page could not answer before. A lock is 8 failed passwords and
+      // clears itself in 15 minutes, so "locked until HH:MM" is the whole
+      // story; a few failed tries short of a lock is worth a note too.
+      const signInState = (a) => {
+        const until = a.locked_until ? new Date(a.locked_until) : null;
+        if (until && until.getTime() > Date.now()) {
+          return 'locked until ' + until.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        }
+        if (Number(a.failed_logins) > 0) return fmt(a.failed_logins) + ' failed tries';
+        return 'ok';
+      };
+
       const accounts = document.querySelector('#accounts-table tbody');
       accounts.textContent = '';
-      if (!(ops.accounts || []).length) fill('#accounts-table', 7, 'No accounts yet.');
+      if (!(ops.accounts || []).length) fill('#accounts-table', 8, 'No accounts yet.');
       for (const a of ops.accounts || []) {
         rowOf(accounts, [
           [a.email || '—', 'name'],
+          [signInState(a), 'num'],
           [fmt(a.boards), 'num'],
           [fmt(a.jobs), 'num'],
           [fmt(a.applied), 'num'],
@@ -334,7 +348,7 @@ const fmt = (n) => Number(n || 0).toLocaleString();
       p.textContent = err.message;
       el.append(h, p);
       host.append(el);
-      fill('#accounts-table', 7, 'Unavailable — ' + err.message);
+      fill('#accounts-table', 8, 'Unavailable — ' + err.message);
       fill('#errors-table', 4, 'Unavailable — ' + err.message);
       fill('#feedback-table', 4, 'Unavailable — ' + err.message);
     }

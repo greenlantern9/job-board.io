@@ -76,6 +76,7 @@ export async function accountActivity(env, { limit = 50 } = {}) {
   return queryAll(
     env,
     `SELECT u.id, u.email, u.created_at, u.last_login_at, u.email_verified, u.totp_enabled,
+            u.locked_until, u.failed_logins,
             (SELECT COUNT(*) FROM boards b WHERE b.user_id = u.id) AS boards,
             (SELECT COUNT(*) FROM jobs j WHERE j.user_id = u.id) AS jobs,
             (SELECT COUNT(*) FROM jobs j WHERE j.user_id = u.id AND j.status = 'applied') AS applied,

@@ -380,8 +380,16 @@ function wireAuth() {
     const form = event.target;
     const button = $('button[type=submit]', form);
     await busy(button, 'Sending…', async () => {
-      await api('/api/auth/password/forgot', { method: 'POST', body: { email: form.email.value } });
-      authNotice('If that address has an account, a reset link is on its way.', 'ok');
+      const res = await api('/api/auth/password/forgot', { method: 'POST', body: { email: form.email.value } });
+      // With no provider configured the reset is recorded but never sent, and
+      // claiming otherwise turns a forgotten password into a silent permanent
+      // lockout - the person just waits for a mail that cannot arrive.
+      authNotice(
+        res.emailDelivery
+          ? 'If that address has an account, a reset link is on its way.'
+          : 'Password reset is not available yet - email delivery is not switched on. Contact the site owner to get back in.',
+        res.emailDelivery ? 'ok' : ''
+      );
     })();
   });
 

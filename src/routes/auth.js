@@ -237,8 +237,12 @@ async function forgotPassword(request, env) {
     });
   }
   // Same response either way - an enumeration oracle here undoes the care taken
-  // on the signup path.
-  return json({ ok: true });
+  // on the signup path. Whether delivery is configured at all is service state,
+  // not account state, so reporting it leaks nothing about who exists - and
+  // without it the client told people a reset link was "on its way" while the
+  // send was being skipped, which turned a forgotten password into a silent
+  // permanent lockout.
+  return json({ ok: true, emailDelivery: Boolean(env.RESEND_API_KEY) });
 }
 
 async function resetPassword(request, env) {
