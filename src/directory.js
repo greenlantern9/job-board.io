@@ -45,12 +45,12 @@ const CANDIDATE_SCHEMA = {
           kind: {
             type: 'string',
             description:
-              'Which system hosts their board: greenhouse, lever, ashby, smartrecruiters, recruitee, workable, personio, breezy, gem, loxo, bamboohr, rippling, zohorecruit or jobvite',
+              'Which system hosts their board: greenhouse, lever, ashby, smartrecruiters, recruitee, workable, personio, breezy, gem, loxo, bamboohr, rippling, zohorecruit, jobvite, workday or taleo',
           },
           identifier: {
             type: 'string',
             description:
-              'The board slug exactly as it appears in their careers URL, e.g. the "stripe" in boards.greenhouse.io/stripe',
+              'The board slug exactly as it appears in their careers URL, e.g. the "stripe" in boards.greenhouse.io/stripe. Workday boards are tenant.cluster.site from {tenant}.{cluster}.myworkdayjobs.com/{site}, e.g. intel.wd1.External; taleo boards are zone.portalId.section.',
           },
           evidence: {
             type: 'string',

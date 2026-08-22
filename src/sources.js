@@ -38,6 +38,8 @@ export const SOURCE_KINDS = [
   'rippling',
   'zohorecruit',
   'jobvite',
+  'workday',
+  'taleo',
   'remotive',
   'arbeitnow',
   'remoteok',
@@ -65,6 +67,8 @@ export const ATS_KINDS = [
   'rippling',
   'zohorecruit',
   'jobvite',
+  'workday',
+  'taleo',
 ];
 
 export class SourceError extends Error {}
@@ -1454,6 +1458,207 @@ async function fetchJobvite(slug) {
   });
 }
 
+// Workday boards are identified by three parts, all present verbatim in the
+// public careers URL https://{tenant}.{cluster}.myworkdayjobs.com/{site} -
+// stored here as "tenant.cluster.site" (intel.wd1.External). The cluster is
+// load-bearing: wildcard DNS makes every {tenant}.{wdN} host resolve, and the
+// wrong cluster answers 422, so DNS success proves nothing.
+function parseWorkdayId(identifier) {
+  const parts = String(identifier || '').split('.');
+  if (parts.length !== 3) {
+    throw new SourceError('Workday boards are identified as tenant.cluster.site, e.g. intel.wd1.External');
+  }
+  const [tenant, cluster, site] = parts;
+  if (!/^[a-z0-9-]{1,63}$/i.test(tenant) || !/^wd\d{1,3}$/i.test(cluster) || !/^[A-Za-z0-9_-]{1,80}$/.test(site)) {
+    throw new SourceError('Workday identifier has an invalid part.');
+  }
+  return { tenant, cluster, site };
+}
+
+// "Posted Yesterday" is the only date the list carries; the ISO date costs one
+// GET per job. The relative text is parsed where it is precise and dropped
+// where it is not - "30+ Days Ago" is a floor, not a date.
+function workdayPostedOn(text) {
+  const value = String(text || '').toLowerCase();
+  if (/today/.test(value)) return new Date().toISOString();
+  if (/yesterday/.test(value)) return new Date(Date.now() - 86400000).toISOString();
+  const days = value.match(/(\d+)\+?\s+days?\s+ago/);
+  if (days && !value.includes('+')) return new Date(Date.now() - Number(days[1]) * 86400000).toISOString();
+  return '';
+}
+
+const WORKDAY_PAGE = 20; // limit > 20 is a hard 400 on this API
+const WORKDAY_MAX_PAGES = 5;
+
+async function fetchWorkday(identifier) {
+  const { tenant, cluster, site } = parseWorkdayId(identifier);
+  const base = `https://${tenant}.${cluster}.myworkdayjobs.com`;
+  const jobs = [];
+  let total = Infinity;
+
+  // Capped at five pages (100 postings): classification needs vocabulary and a
+  // board needs its best candidates, and neither needs all 643 of Intel's
+  // postings at thirty-three POSTs a read. job_count for huge Workday tenants
+  // therefore under-reports - a stated trade, not an accident.
+  for (let page = 0; page < WORKDAY_MAX_PAGES && page * WORKDAY_PAGE < total; page++) {
+    const res = await fetchWithTimeout(`${base}/wday/cxs/${encodeURIComponent(tenant)}/${site}/jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ limit: WORKDAY_PAGE, offset: page * WORKDAY_PAGE, searchText: '', appliedFacets: {} }),
+    });
+    if (res.status === 404) throw new SourceError('No such Workday site on this tenant.');
+    if (res.status === 422) throw new SourceError('No such Workday tenant on this cluster.');
+    if (!res.ok) {
+      const err = new SourceError(`${res.status} ${res.statusText}`);
+      if (res.status === 429 || res.status >= 500) err.transient = true;
+      throw err;
+    }
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new SourceError('Response was not valid JSON');
+    }
+    // "total" is only trustworthy on the first page - deep pages were observed
+    // returning total: 0 alongside real postings.
+    if (page === 0) total = Number(data.total) || 0;
+    const postings = Array.isArray(data.jobPostings) ? data.jobPostings : [];
+    jobs.push(...postings);
+    if (postings.length < WORKDAY_PAGE) break;
+  }
+
+  return jobs.map((job) => {
+    const path = String(job.externalPath || '');
+    return {
+      direct: true,
+      externalId: `workday:${identifier}:${path || job.title}`,
+      title: String(job.title || 'Untitled role').trim(),
+      company: tenant,
+      location: job.locationsText || '',
+      remote: remoteFrom(false, '', job.title, job.locationsText),
+      employment: '',
+      salaryMin: 0,
+      salaryMax: 0,
+      salaryRaw: '',
+      url: `${base}/${site}${path}`,
+      description: '',
+      postedAt: workdayPostedOn(job.postedOn),
+    };
+  });
+}
+
+// Taleo boards are "zone.portalId.section" (starbucks.20160130812.1000222):
+// the zone is the tenant hostname, the numeric portal id drives the REST
+// search, and the section only builds job URLs. Portal ids are extractable
+// from any tenant careers page (portal=NNN in the HTML) but are not global -
+// each belongs to its zone.
+function parseTaleoId(identifier) {
+  const match = String(identifier || '').match(/^([a-z0-9-]{1,63})\.(\d{1,20})\.([A-Za-z0-9_-]{1,80})$/i);
+  if (!match) {
+    throw new SourceError('Taleo boards are identified as zone.portalId.section, e.g. starbucks.20160130812.1000222');
+  }
+  return { zone: match[1], portalId: match[2], section: match[3] };
+}
+
+const TALEO_PAGE = 25; // fixed page size on this API
+const TALEO_MAX_PAGES = 4;
+
+async function fetchTaleo(identifier) {
+  const { zone, portalId, section } = parseTaleoId(identifier);
+  const host = `https://${zone}.taleo.net`;
+  const rows = [];
+  let totalCount = Infinity;
+
+  for (let page = 1; page <= TALEO_MAX_PAGES && (page - 1) * TALEO_PAGE < totalCount; page++) {
+    const res = await fetchWithTimeout(
+      `${host}/careersection/rest/jobboard/searchjobs?lang=en&portal=${encodeURIComponent(portalId)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          // Without a timezone header the server answers 500 "An Error
+          // Occurred in TEE". It is the one non-obvious requirement.
+          tzname: 'America/New_York',
+        },
+        body: JSON.stringify({
+          multilineEnabled: false,
+          fieldData: { fields: { KEYWORD: '', LOCATION: '' }, valid: true },
+          pageNo: page,
+        }),
+      }
+    );
+    if (!res.ok) {
+      const err = new SourceError(`${res.status} ${res.statusText}`);
+      if (res.status === 429 || res.status >= 500) err.transient = true;
+      throw err;
+    }
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new SourceError('Response was not valid JSON');
+    }
+    // A wrong portal id is a 200 with a flag, not an error status.
+    if (data.careerSectionUnAvailable) throw new SourceError('No such Taleo board (career section unavailable).');
+    if (data.pagingData && Number(data.pagingData.totalCount) >= 0 && page === 1) {
+      totalCount = Number(data.pagingData.totalCount);
+    }
+    const list = Array.isArray(data.requisitionList) ? data.requisitionList : [];
+    rows.push(...list);
+    if (list.length < TALEO_PAGE) break;
+  }
+
+  return rows.map((row) => {
+    const columns = Array.isArray(row.column) ? row.column : [];
+    const titleIdx = Number.isInteger(row.linkedColumn) ? row.linkedColumn : 0;
+    const locIdx = Array.isArray(row.locationsColumns) ? row.locationsColumns[0] : -1;
+    const title = htmlToText(String(columns[titleIdx] || 'Untitled role')).trim();
+
+    // Locations arrive as a JSON-encoded array string on some tenants and as
+    // plain text ("Multiple Locations") on others - the column layout itself
+    // is tenant-configured, which is why the row carries its own indexes.
+    let location = '';
+    if (locIdx >= 0 && columns[locIdx] !== undefined) {
+      const raw = String(columns[locIdx]);
+      try {
+        const parsed = JSON.parse(raw);
+        location = Array.isArray(parsed) ? parsed.join(', ') : raw;
+      } catch {
+        location = raw;
+      }
+    }
+
+    // The date has no declared index; it is whichever remaining column parses
+    // as one.
+    let postedAt = '';
+    for (let i = 0; i < columns.length; i++) {
+      if (i === titleIdx || i === locIdx) continue;
+      const candidate = isoOrEmpty(columns[i]);
+      if (candidate) {
+        postedAt = candidate;
+        break;
+      }
+    }
+
+    return {
+      direct: true,
+      externalId: `taleo:${identifier}:${row.jobId || row.contestNo}`,
+      title,
+      company: zone,
+      location,
+      remote: remoteFrom(false, '', title, location),
+      employment: '',
+      salaryMin: 0,
+      salaryMax: 0,
+      salaryRaw: '',
+      url: `${host}/careersection/${encodeURIComponent(section)}/jobdetail.ftl?job=${encodeURIComponent(row.jobId || '')}&lang=en`,
+      description: '',
+      postedAt,
+    };
+  });
+}
+
 export const AGGREGATOR_KINDS = ['adzuna', 'themuse', 'weworkremotely', 'jobicy', 'remotive', 'arbeitnow', 'remoteok', 'himalayas'];
 
 /** Exposed so the matching rules can be tested without hitting a live feed. */
@@ -1697,6 +1902,10 @@ export async function fetchSource(source, options = {}) {
       return fetchZohoRecruit(source.identifier);
     case 'jobvite':
       return fetchJobvite(source.identifier);
+    case 'workday':
+      return fetchWorkday(source.identifier);
+    case 'taleo':
+      return fetchTaleo(source.identifier);
     case 'gem':
       return fetchGem(source.identifier);
     case 'loxo':

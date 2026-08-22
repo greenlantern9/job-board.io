@@ -55,6 +55,10 @@ export const SEED_COMPANIES = [
   { kind: 'rippling', identifier: 'dgrsystems', label: 'DGR Systems', category: 'software' },
   { kind: 'zohorecruit', identifier: 'bruntwork', label: 'BruntWork', category: 'other' },
   { kind: 'jobvite', identifier: 'thriftbooks', label: 'ThriftBooks', category: 'other' },
+  { kind: 'workday', identifier: 'intel.wd1.External', label: 'Intel', category: 'software' },
+  { kind: 'workday', identifier: 'nc.wd108.NC_Careers', label: 'State of North Carolina', category: 'other' },
+  { kind: 'taleo', identifier: 'starbucks.20160130812.1000222', label: 'Starbucks', category: 'other' },
+  { kind: 'taleo', identifier: 'fao.8105120163.fao_external', label: 'FAO (United Nations)', category: 'other' },
 
   // Verified additions, probed against the live APIs before being written down.
   // Weighted deliberately away from technology: the original set was entirely
