@@ -31,6 +31,9 @@ export const SOURCE_KINDS = [
   'recruitee',
   'workable',
   'personio',
+  'breezy',
+  'gem',
+  'loxo',
   'remotive',
   'arbeitnow',
   'remoteok',
@@ -43,7 +46,7 @@ export const SOURCE_KINDS = [
 ];
 
 /** Platforms discovery probes when trying to locate a named company. */
-export const ATS_KINDS = ['greenhouse', 'lever', 'ashby', 'smartrecruiters', 'recruitee', 'workable', 'personio'];
+export const ATS_KINDS = ['greenhouse', 'lever', 'ashby', 'smartrecruiters', 'recruitee', 'workable', 'personio', 'breezy', 'gem', 'loxo'];
 
 export class SourceError extends Error {}
 
@@ -60,8 +63,11 @@ export function sourceConfigured(kind, env) {
   return true;
 }
 
-async function fetchJson(url) {
-  const res = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } });
+async function fetchJson(url, init = {}) {
+  const res = await fetchWithTimeout(url, {
+    ...init,
+    headers: { Accept: 'application/json', ...(init.headers || {}) },
+  });
   if (!res.ok) {
     const err = new SourceError(`${res.status} ${res.statusText}`);
     // Rate limiting and server trouble are the platform's weather, not the
@@ -1095,6 +1101,138 @@ async function fetchPersonio(slug) {
   });
 }
 
+async function fetchBreezy(slug) {
+  const board = validateSlug(slug);
+  const data = await fetchJson(`https://${encodeURIComponent(board)}.breezy.hr/json`);
+  const jobs = Array.isArray(data) ? data : [];
+  return jobs.map((job) => {
+    const loc = job.location || {};
+    const company = String((job.company && job.company.name) || board).trim();
+    // Descriptions exist behind ?verbose=true, but a recruiting agency's board
+    // measured 1.7MB without it and triple with - the light call is the only
+    // one safe to poll at catalogue scale, so these rank on their titles.
+    return {
+      direct: true,
+      externalId: `breezy:${board}:${job.id || job.friendly_id}`,
+      title: String(job.name || 'Untitled role').trim(),
+      company,
+      location: loc.name || [loc.city, loc.state && loc.state.name].filter(Boolean).join(', '),
+      remote: remoteFrom(loc.is_remote === true, loc.city || '', job.name),
+      employment: (job.type && job.type.name) || '',
+      salaryMin: 0,
+      salaryMax: 0,
+      salaryRaw: typeof job.salary === 'string' ? job.salary : '',
+      url: job.url || '',
+      description: '',
+      postedAt: isoOrEmpty(job.published_date),
+    };
+  });
+}
+
+// The one GraphQL connector. The query asks for the board's metadata alongside
+// its postings because that is what tells a missing board from a quiet one:
+// a bad slug still answers 200, but with jobBoardExternal null.
+const GEM_BOARD_QUERY = `query JobBoardList($boardId: String!) {
+  oatsExternalJobPostings(boardId: $boardId) {
+    jobPostings { id extId title locations { name city isoCountry isRemote } job { department { name } locationType employmentType } }
+  }
+  jobBoardExternal(vanityUrlPath: $boardId) { id teamDisplayName }
+}`;
+
+async function fetchGem(slug) {
+  const board = validateSlug(slug);
+  const data = await fetchJson('https://jobs.gem.com/api/public/graphql', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      operationName: 'JobBoardList',
+      variables: { boardId: board },
+      query: GEM_BOARD_QUERY,
+    }),
+  });
+  const payload = (data && data.data) || {};
+  if (!payload.jobBoardExternal) {
+    throw new SourceError('No such Gem board.');
+  }
+  const company = String(payload.jobBoardExternal.teamDisplayName || board).trim();
+  const posts = (payload.oatsExternalJobPostings && payload.oatsExternalJobPostings.jobPostings) || [];
+  return posts.map((post) => {
+    const locations = Array.isArray(post.locations) ? post.locations : [];
+    const primary = locations[0] || {};
+    const job = post.job || {};
+    return {
+      direct: true,
+      externalId: `gem:${board}:${post.extId || post.id}`,
+      title: String(post.title || 'Untitled role').trim(),
+      company,
+      location: [...new Set(locations.map((l) => l.name).filter(Boolean))].join(', '),
+      remote: remoteFrom(
+        job.locationType === 'REMOTE' || locations.some((l) => l.isRemote === true),
+        primary.city || '',
+        post.title
+      ),
+      employment: job.employmentType || '',
+      // The list query carries no dates, salaries or descriptions; a per-job
+      // detail query exists but would be one call per posting.
+      salaryMin: 0,
+      salaryMax: 0,
+      salaryRaw: '',
+      url: `https://jobs.gem.com/${encodeURIComponent(board)}/${encodeURIComponent(post.extId || post.id)}`,
+      description: '',
+      postedAt: '',
+    };
+  });
+}
+
+async function fetchLoxo(slug) {
+  const board = validateSlug(slug);
+  const res = await fetchWithTimeout(
+    `https://app.loxo.co/${encodeURIComponent(board)}/job-distribution/indeed`,
+    { headers: { Accept: 'application/xml, text/xml' } }
+  );
+  if (!res.ok) {
+    const err = new SourceError(`${res.status} ${res.statusText}`);
+    if (res.status === 429 || res.status >= 500) err.transient = true;
+    throw err;
+  }
+  const xml = await res.text();
+
+  const pick = (block, tag) => {
+    const match = block.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+    if (!match) return '';
+    return decodeEntities(match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')).trim();
+  };
+
+  // Known limitation, measured before shipping: this feed is populated only
+  // when the agency enabled Indeed distribution, so an empty <jobs/> can mean
+  // "distribution off" as easily as "no openings" - one probed agency had 40
+  // jobs on its HTML board and an empty feed. Empty reads as quiet, which
+  // under-covers those agencies rather than misreporting anyone.
+  const entries = xml.match(/<job>[\s\S]*?<\/job>/g) || [];
+  return entries.map((block) => {
+    const title = htmlToText(pick(block, 'title')) || 'Untitled role';
+    const description = htmlToText(pick(block, 'description'));
+    const city = pick(block, 'city');
+    const location = [city, pick(block, 'state'), pick(block, 'country')].filter(Boolean).join(', ');
+    const salary = parseSalary(`${pick(block, 'salary')} ${description}`);
+    return {
+      direct: true,
+      externalId: `loxo:${board}:${pick(block, 'referencenumber') || pick(block, 'url')}`,
+      title,
+      company: String(pick(block, 'company') || board).trim(),
+      location,
+      remote: remoteFrom(false, city, title, location),
+      employment: '',
+      salaryMin: salary.min,
+      salaryMax: salary.max,
+      salaryRaw: salary.raw,
+      url: pick(block, 'url'),
+      description: truncate(description),
+      postedAt: isoOrEmpty(pick(block, 'date')),
+    };
+  });
+}
+
 export const AGGREGATOR_KINDS = ['adzuna', 'themuse', 'weworkremotely', 'jobicy', 'remotive', 'arbeitnow', 'remoteok', 'himalayas'];
 
 /** Exposed so the matching rules can be tested without hitting a live feed. */
@@ -1328,6 +1466,12 @@ export async function fetchSource(source, options = {}) {
       return fetchAshby(source.identifier);
     case 'recruitee':
       return fetchRecruitee(source.identifier);
+    case 'breezy':
+      return fetchBreezy(source.identifier);
+    case 'gem':
+      return fetchGem(source.identifier);
+    case 'loxo':
+      return fetchLoxo(source.identifier);
     case 'workable':
       return fetchWorkable(source.identifier);
     case 'personio':

@@ -48,6 +48,9 @@ export const SEED_COMPANIES = [
   { kind: 'recruitee', identifier: 'bunq', label: 'bunq', category: 'software' },
   { kind: 'workable', identifier: 'blueground', label: 'Blueground', category: 'other' },
   { kind: 'personio', identifier: 'everphone', label: 'Everphone', category: 'software' },
+  { kind: 'breezy', identifier: 'kmg-prestige', label: 'KMG Prestige', category: 'other' },
+  { kind: 'gem', identifier: 'fetch', label: 'Fetch', category: 'software' },
+  { kind: 'loxo', identifier: 'career-staffing-talent', label: 'Career Staffing Talent', category: 'other' },
 
   // Verified additions, probed against the live APIs before being written down.
   // Weighted deliberately away from technology: the original set was entirely
