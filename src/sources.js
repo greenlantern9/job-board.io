@@ -59,7 +59,15 @@ export function sourceConfigured(kind, env) {
 
 async function fetchJson(url) {
   const res = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new SourceError(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const err = new SourceError(`${res.status} ${res.statusText}`);
+    // Rate limiting and server trouble are the platform's weather, not the
+    // employer's absence - three of either used to retire a live employer
+    // from every search, exactly like a 404. Only a definite "not here"
+    // deserves a hard strike.
+    if (res.status === 429 || res.status >= 500) err.transient = true;
+    throw err;
+  }
   try {
     return await res.json();
   } catch {

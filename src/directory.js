@@ -466,9 +466,17 @@ export async function topUpCatalogue(env, { selfHost } = {}) {
   // thing for the price of a fetch, out of a list that is already on disk. So
   // long as that backlog exists, buying slugs would be spending money on work
   // already done.
+  // Actionable backlog only. A board that was read and had no openings has no
+  // titles to classify from - it stays category-less until it posts again, and
+  // counting it here held this gate shut permanently once the readable rows
+  // were done. Rows that failed out are equally not waiting on classification.
   const backlog = await queryOne(
     env,
-    "SELECT COUNT(*) AS n FROM company_directory WHERE category = ''"
+    `SELECT COUNT(*) AS n FROM company_directory
+     WHERE category = ''
+       AND failed_streak < ?
+       AND NOT (verified_at <> '' AND job_count = 0)`,
+    FAILED_STREAK_LIMIT
   );
   if (backlog && backlog.n > 0) return { skipped: 'classification-backlog', backlog: backlog.n };
 
@@ -746,9 +754,15 @@ export async function classifyBoards(env, { selfHost, limit = CLASSIFY_PER_TICK 
       // on an empty title_terms, which a board with no titles can never fill -
       // and several thousand dormant boards would be re-read every five minutes
       // for ever, crowding out the ones that have something to say.
+      // job_count = 0 is not bookkeeping: the rest window keys on it. The
+      // seeded count was the published list's snapshot, and a row whose board
+      // has since emptied kept that stale count - so it never rested, was
+      // re-selected every tick, and sorted near the front on a number that was
+      // no longer true. Enough of those fill the whole tick and starve the
+      // queue behind them. The read is the truth; the snapshot is not.
       writes.push(
         env.DB.prepare(
-          'UPDATE company_directory SET verified_at = ?, timeout_streak = 0 WHERE kind = ? AND identifier = ?'
+          'UPDATE company_directory SET verified_at = ?, timeout_streak = 0, job_count = 0 WHERE kind = ? AND identifier = ?'
         ).bind(now, result.row.kind, result.row.identifier)
       );
       continue;

@@ -74,12 +74,17 @@ const fmt = (n) => Number(n || 0).toLocaleString();
 
       const cat = s.catalogue || { total: 0, unclassified: 0, byPlatform: [], byField: [] };
       const ready = cat.total - cat.unclassified;
+      // Quiet rows were read and had no openings - they cannot classify until
+      // they post again, so they are not "still being classified" and were
+      // making a finished fill read as a stalled one.
+      const quiet = (cat.readiness || {}).quiet || 0;
+      const working = Math.max(0, cat.unclassified - quiet);
       cards.append(
         card('Catalogue', fmt(cat.total),
           cat.unclassified > 0
-            ? fmt(ready) + ' ready · ' + fmt(cat.unclassified) + ' still being classified'
+            ? fmt(ready) + ' ready · ' + fmt(quiet) + ' quiet right now · ' + fmt(working) + ' still being classified'
             : fmt(ready) + ' ready · every board classified',
-          cat.unclassified > 0 ? 'var(--spend)' : 'var(--free)')
+          working > 0 ? 'var(--spend)' : 'var(--free)')
       );
 
       const readiness = cat.readiness || {};
@@ -95,6 +100,8 @@ const fmt = (n) => Number(n || 0).toLocaleString();
           card('With a vocabulary', fmt(readiness.withVocabulary),
             pct(readiness.withVocabulary) + ' — needed to match a search to an employer',
             readiness.withVocabulary < readiness.total ? 'var(--spend)' : 'var(--free)'),
+          card('Quiet right now', fmt(readiness.quiet || 0),
+            'Answered with no openings - nothing to read until they hire again'),
           card('Retired', fmt(readiness.retired),
             fmt(readiness.slow) + ' more are slow but still offered',
             readiness.retired > 0 ? 'var(--inert)' : 'var(--free)'),

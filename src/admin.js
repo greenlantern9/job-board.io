@@ -256,7 +256,11 @@ export async function adminStats(env) {
             SUM(CASE WHEN title_terms <> '' THEN 1 ELSE 0 END) AS with_vocabulary,
             SUM(CASE WHEN job_count > 0 THEN 1 ELSE 0 END) AS counted,
             SUM(CASE WHEN failed_streak >= 3 THEN 1 ELSE 0 END) AS retired,
-            SUM(CASE WHEN timeout_streak > 0 THEN 1 ELSE 0 END) AS slow
+            SUM(CASE WHEN timeout_streak > 0 THEN 1 ELSE 0 END) AS slow,
+            -- Read, answered, and had nothing to say. These cannot classify
+            -- until they post again, and lumping them into "unclassified" made
+            -- a finished fill read as a stalled one.
+            SUM(CASE WHEN category = '' AND verified_at <> '' AND job_count = 0 THEN 1 ELSE 0 END) AS quiet
      FROM company_directory`
   );
   const biggest = await queryAllSafe(
@@ -321,6 +325,7 @@ export async function adminStats(env) {
         counted: readiness.counted || 0,
         retired: readiness.retired || 0,
         slow: readiness.slow || 0,
+        quiet: readiness.quiet || 0,
       },
       biggest,
       lastCron: (heartbeat && heartbeat.attempted_at) || 'never',
