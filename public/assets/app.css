@@ -837,6 +837,32 @@
   width: 9.5rem;
 }
 
+/* Header sort buttons wear the th's own type, so a sortable column looks like
+   any other header until pointed at. The direction cell keeps its width while
+   empty, so an arrow appearing does not nudge the label sideways. */
+.jobs thead .th-sort {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.jobs thead .th-sort:hover,
+.jobs thead th[aria-sort] .th-sort {
+  color: var(--accent);
+}
+
+.jobs thead .th-sort__dir {
+  width: 0.8em;
+  font-size: 0.6875rem;
+}
+
 .jobs tbody tr {
   border-bottom: 1px solid var(--line-soft);
   cursor: pointer;

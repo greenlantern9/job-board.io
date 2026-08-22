@@ -257,14 +257,28 @@
             </div>
             <div class="table-wrap">
               <table class="jobs">
+                <!-- Sortable headers re-order the loaded rows client-side; app.js
+                     owns the click cycle and the aria-sort/arrow state. Real
+                     buttons, because CSP forbids inline handlers and a th alone
+                     is not keyboard-operable. -->
                 <thead>
                   <tr>
-                    <th scope="col" class="jobs__score">Score</th>
-                    <th scope="col" class="jobs__age">Posted</th>
-                    <th scope="col">Role</th>
-                    <th scope="col" class="jobs__company-col">Company</th>
+                    <th scope="col" class="jobs__score">
+                      <button type="button" class="th-sort" data-sort="score">Score<span class="th-sort__dir" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" class="jobs__age">
+                      <button type="button" class="th-sort" data-sort="posted">Posted<span class="th-sort__dir" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col">
+                      <button type="button" class="th-sort" data-sort="title">Role<span class="th-sort__dir" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" class="jobs__company-col">
+                      <button type="button" class="th-sort" data-sort="company">Company<span class="th-sort__dir" aria-hidden="true"></span></button>
+                    </th>
                     <th scope="col" class="jobs__place-col">Location</th>
-                    <th scope="col" class="jobs__pay-col">Salary</th>
+                    <th scope="col" class="jobs__pay-col">
+                      <button type="button" class="th-sort" data-sort="pay">Salary<span class="th-sort__dir" aria-hidden="true"></span></button>
+                    </th>
                     <th scope="col" class="jobs__status-col">Status</th>
                     <th scope="col"><span class="visually-hidden">Actions</span></th>
                   </tr>

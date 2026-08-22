@@ -5,6 +5,7 @@
 // generates from our own encoder.
 
 import { readResumeFile } from './docparse.js';
+import { comparator, DEFAULT_DIR } from './list-sort.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -95,6 +96,11 @@ const state = {
   minScore: 0,
   maxAgeDays: 0,
   sort: 'score',
+  // Header-click sort within the loaded rows ({ key, dir } or null). Purely
+  // presentational: never sent to the server, so clearing it falls back to
+  // exactly the order the server gave. Reset where the rows' baseline changes
+  // (board switch, Best fit/Newest), survives everything that just re-renders.
+  listSort: null,
   query: '',
   lastSync: null,
   pollTimer: null,
@@ -530,6 +536,7 @@ function renderBoardList() {
 async function selectBoard(id) {
   state.boardId = id;
   state.lastSync = null;
+  state.listSort = null;
   localStorage.setItem('jb.board', id);
   $('#app').classList.remove('sidebar-open');
   renderBoardList();
@@ -663,6 +670,7 @@ function renderStatusChips() {
           text: label,
           onclick: async () => {
             state.sort = key;
+            state.listSort = null;
             await loadJobs();
           },
         })
@@ -699,10 +707,24 @@ function statusSelect(job) {
   return select;
 }
 
+/** Reflect state.listSort in the thead: aria-sort on the th, an arrow beside
+ *  the label. Runs on every list render, so the header can never disagree
+ *  with the rows below it. */
+function renderSortHeaders() {
+  for (const btn of $$('.jobs .th-sort')) {
+    const on = state.listSort && state.listSort.key === btn.dataset.sort;
+    const th = btn.closest('th');
+    if (on) th.setAttribute('aria-sort', state.listSort.dir === 'asc' ? 'ascending' : 'descending');
+    else th.removeAttribute('aria-sort');
+    $('.th-sort__dir', btn).textContent = on ? (state.listSort.dir === 'asc' ? '▲' : '▼') : '';
+  }
+}
+
 function renderList() {
   $('#view-list').hidden = false;
   $('#view-board').hidden = true;
 
+  renderSortHeaders();
   const body = clear($('#jobs-body'));
 
   if (state.jobs.length === 0) {
@@ -712,7 +734,13 @@ function renderList() {
   }
   $('#empty').hidden = true;
 
-  for (const job of state.jobs) {
+  // Sort a copy: state.jobs keeps the server's order so a cleared header sort
+  // returns to it without another fetch.
+  const jobs = state.listSort
+    ? [...state.jobs].sort(comparator(state.listSort.key, state.listSort.dir))
+    : state.jobs;
+
+  for (const job of jobs) {
     const age = postedAge(job);
     // Remote is a property of the role, not a place, so it reads as a badge
     // beside the location rather than replacing it - plenty of remote roles
@@ -2919,6 +2947,20 @@ function wireApp() {
     state.minScore = Number(event.target.value);
     await loadJobs();
   });
+
+  // Column headers cycle: the column's own direction, flipped, then back to
+  // the order the server sent. No fetch - this only re-reads what is loaded.
+  for (const btn of $$('.jobs .th-sort')) {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.sort;
+      const current = state.listSort;
+      if (!current || current.key !== key) state.listSort = { key, dir: DEFAULT_DIR[key] };
+      else if (current.dir === DEFAULT_DIR[key])
+        state.listSort = { key, dir: current.dir === 'asc' ? 'desc' : 'asc' };
+      else state.listSort = null;
+      renderList();
+    });
+  }
 
   $('#modal-close').addEventListener('click', closeModal);
   $('#modal-scrim').addEventListener('click', closeModal);
